@@ -4,6 +4,10 @@
     {
       "src": "api/chat.py",
       "use": "@vercel/python"
+    },
+    {
+      "src": "embed.js",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -12,7 +16,11 @@
       "dest": "api/chat.py"
     },
     {
-      "src": "/(.*)",
+      "src": "/embed.js",
+      "dest": "embed.js"
+    },
+    {
+      "src": "/",
       "dest": "api/chat.py"
     }
   ]
