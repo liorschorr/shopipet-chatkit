@@ -6,21 +6,24 @@ from google.oauth2 import service_account
 from openai import OpenAI
 import os, json
 
+# === Create the FastAPI app FIRST ===
 app = FastAPI(title="ShopiBot Chat API")
 
-# CORS for website use
+# === Allow cross-origin requests ===
+origins = [
+    "https://dev.shopipet.co.il",
+    "https://shopipet.co.il",
+    "https://www.shopipet.co.il",
+    "http://localhost:3000"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://dev.shopipet.co.il",
-        "https://shopipet.co.il",
-        "https://www.shopipet.co.il"
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # === Environment configuration ===
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1-XfEIXT0ovbhkWnBezc4v2xIcmUdONC7mAcep9554q8")
 SHEET_RANGE = os.environ.get("SHEET_RANGE", "Sheet1!A2:F")  # e.g., Products!A2:F
