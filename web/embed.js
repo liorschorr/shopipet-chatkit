@@ -1,448 +1,261 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import json
-import os
-import re
+(function () {
+  const VERCEL_API_BASE = 'https://shopipet-chatkit.vercel.app';
 
-# Import Google Sheets
-try:
-    from googleapiclient.discovery import build
-    from google.oauth2 import service_account
-    GOOGLE_AVAILABLE = True
-except ImportError:
-    GOOGLE_AVAILABLE = False
-    print("Warning: Google API not available")
+  const style = document.createElement('style');
+  style.innerHTML = `
+  .shopibot-bubble{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:#2b65d9;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:999999;transition:transform 0.2s;font-size:24px}
+  .shopibot-bubble:hover{transform:scale(1.1)}
+  .shopibot-panel{position:fixed;bottom:92px;right:24px;width:360px;max-width:92vw;height:520px;background:#fff;border-radius:16px;box-shadow:0 16px 40px rgba(0,0,0,.22);display:none;flex-direction:column;overflow:hidden;z-index:999998}
+  .shopibot-header{padding:12px 14px;background:#2b65d9;color:#fff;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+  .shopibot-close{cursor:pointer;font-size:24px;padding:0 4px;line-height:1}
+  .shopibot-body{padding:12px;overflow-y:auto;height:100%;display:flex;flex-direction:column;gap:8px}
+  .shopibot-input{display:flex;gap:8px;padding:12px;border-top:1px solid #eee}
+  .shopibot-input input{flex:1;padding:10px;border:1px solid #ddd;border-radius:10px;font-size:14px;font-family:inherit}
+  .shopibot-input button{padding:10px 14px;border:none;border-radius:10px;background:#2b65d9;color:#fff;cursor:pointer;font-weight:600;font-family:inherit}
+  .shopibot-input button:hover{background:#1e4db8}
+  .shopibot-input button:disabled{background:#ccc;cursor:not-allowed}
+  .msg{margin:4px 0;padding:10px 12px;border-radius:12px;max-width:85%;font-size:14px;line-height:1.5}
+  .msg.user{background:#f1f5ff;margin-left:auto;text-align:right}
+  .msg.bot{background:#f7f7f7}
+  .msg.loading{background:#f0f0f0;color:#999;font-style:italic}
+  .prod{display:flex;gap:10px;border:1px solid #e5e5e5;padding:10px;border-radius:12px;margin:6px 0;cursor:pointer;transition:all 0.2s;text-decoration:none;color:inherit;background:#fff}
+  .prod:hover{border-color:#2b65d9;box-shadow:0 2px 8px rgba(43,101,217,0.1);transform:translateY(-2px)}
+  .prod img{width:70px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0}
+  .prod .meta{flex:1;font-size:13px;min-width:0}
+  .prod .name{font-weight:600;margin-bottom:4px;color:#333;line-height:1.3}
+  .prod .brand{color:#666;font-size:12px;margin-bottom:4px}
+  .prod .desc{color:#666;font-size:12px;line-height:1.3;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .prod .price{font-weight:700;color:#2b65d9;font-size:15px}
+  .quick-replies{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+  .quick-reply-btn{padding:8px 12px;border:1px solid #2b65d9;background:#fff;color:#2b65d9;border-radius:16px;font-size:13px;cursor:pointer;transition:all 0.2s;font-family:inherit}
+  .quick-reply-btn:hover{background:#2b65d9;color:#fff}
+  `;
+  document.head.appendChild(style);
 
-# Import OpenAI
-try:
-    from openai import OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-    print("Warning: OpenAI not available")
+  const bubble = document.createElement('div');
+  bubble.className = 'shopibot-bubble';
+  bubble.innerHTML = '💬';
+  bubble.title = 'פתח צ׳אט עם שופיבוט';
+  
+  const panel = document.createElement('div');
+  panel.className = 'shopibot-panel';
+  panel.innerHTML = `
+    <div class="shopibot-header">
+      <span>שופיבוט • עוזר קניות חכם</span>
+      <span class="shopibot-close" title="סגור">×</span>
+    </div>
+    <div class="shopibot-body" id="shopibot-body"></div>
+    <div class="shopibot-input">
+      <input id="shopibot-input" placeholder="מה אתה מחפש היום?" />
+      <button id="shopibot-send">שלח</button>
+    </div>
+  `;
+  
+  document.body.appendChild(bubble);
+  document.body.appendChild(panel);
 
-# === Create Flask app ===
-app = Flask(__name__)
-CORS(app)
+  const body = panel.querySelector('#shopibot-body');
+  const input = panel.querySelector('#shopibot-input');
+  const send = panel.querySelector('#shopibot-send');
+  const closeBtn = panel.querySelector('.shopibot-close');
+  
+  let isLoading = false;
 
-# === Configuration ===
-SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1-XfEIXT0ovbhkWnBezc4v2xIcmUdONC7mAcep9554q8")
-SHEET_RANGE = os.environ.get("SHEET_RANGE", "Sheet1!A2:R")
-GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+  function toggle(){ 
+    panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; 
+    if (panel.style.display === 'flex') {
+      input.focus();
+    }
+  }
+  
+  bubble.addEventListener('click', () => {
+    if (panel.style.display !== 'flex') {
+      panel.style.display = 'flex';
+      if (body.children.length === 0) {
+        addBot("שלום! 👋 אני שופיבוט, כאן כדי לעזור לך למצוא את המוצרים המושלמים לחיית המחמד שלך!");
+        
+        // Show quick category buttons
+        setTimeout(() => {
+          addQuickReplies([
+            "🐕 מזון לכלבים",
+            "🐈 מזון לחתולים",
+            "🎾 צעצועים",
+            "🛁 טיפוח"
+          ]);
+        }, 500);
+      }
+      input.focus();
+    } else {
+      toggle();
+    }
+  });
 
-# Initialize clients
-creds = None
-openai_client = None
+  closeBtn.addEventListener('click', toggle);
 
-# Initialize Google Sheets
-if GOOGLE_AVAILABLE and GOOGLE_CREDENTIALS:
-    try:
-        service_account_info = json.loads(GOOGLE_CREDENTIALS)
-        creds = service_account.Credentials.from_service_account_info(
-            service_account_info,
-            scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
-        )
-        print("✅ Google Sheets initialized")
-    except Exception as e:
-        print(f"❌ Google credentials error: {e}")
-
-# Initialize OpenAI
-if OPENAI_AVAILABLE and OPENAI_API_KEY:
-    try:
-        openai_client = OpenAI(api_key=OPENAI_API_KEY)
-        print("✅ OpenAI initialized")
-    except Exception as e:
-        print(f"❌ OpenAI error: {e}")
-
-# === SYNONYMS AND SEARCH ENHANCEMENT ===
-SYNONYMS = {
-    # Pet names
-    'כלב': ['כלבים', 'דוג', 'דוגי', 'כלבלב', 'puppy', 'dog', 'dogs'],
-    'חתול': ['חתולים', 'קיטי', 'חתולון', 'חתלתול', 'cat', 'kitten', 'cats'],
-    'גור': ['גורים', 'גור כלבים', 'גור חתולים', 'puppies', 'kittens'],
-    'ציפור': ['ציפורים', 'bird', 'birds'],
-    'דג': ['דגים', 'fish'],
+  function addUser(text){
+    const el = document.createElement('div');
+    el.className = 'msg user';
+    el.textContent = text;
+    body.appendChild(el);
+    body.scrollTop = body.scrollHeight;
+  }
+  
+  function addBot(text){
+    const el = document.createElement('div');
+    el.className = 'msg bot';
+    el.textContent = text;
+    body.appendChild(el);
+    body.scrollTop = body.scrollHeight;
+  }
+  
+  function addLoading(){
+    const el = document.createElement('div');
+    el.className = 'msg loading';
+    el.textContent = 'מחפש בשבילך...';
+    el.id = 'loading-msg';
+    body.appendChild(el);
+    body.scrollTop = body.scrollHeight;
+    return el;
+  }
+  
+  function removeLoading(){
+    const loading = document.getElementById('loading-msg');
+    if (loading) loading.remove();
+  }
+  
+  function addProducts(items){
+    if (!items || items.length === 0) return;
     
-    # Product types
-    'מזון': ['אוכל', 'מזונות', 'אוכלים', 'מאכל', 'food', 'אוכלן'],
-    'יבש': ['מזון יבש', 'קיבל', 'dry', 'דראי', 'יבשים'],
-    'רטוב': ['מזון רטוב', 'שימורים', 'פחית', 'wet', 'וואט', 'רטובים'],
-    'חטיף': ['חטיפים', 'פינוק', 'פינוקים', 'treats', 'snacks', 'נשנושים'],
-    'צעצוע': ['צעצועים', 'משחק', 'משחקים', 'toy', 'toys'],
-    'חול': ['ליטר', 'חולות', 'litter', 'sand'],
+    items.forEach(p => {
+      const wrap = document.createElement('a');
+      wrap.className = 'prod';
+      wrap.href = p.url || '#';
+      wrap.target = p.url ? '_blank' : '_self';
+      wrap.rel = 'noopener noreferrer';
+      
+      const imgSrc = p.image || 'https://via.placeholder.com/70?text=No+Image';
+      const brandText = p.brand ? `<div class="brand">🏷️ ${escapeHtml(p.brand)}</div>` : '';
+      
+      // Show sale price if available
+      let priceHtml = '';
+      if (p.sale_price && p.regular_price && p.sale_price !== p.regular_price) {
+        priceHtml = `<div class="price">₪${escapeHtml(p.sale_price)} <span style="text-decoration:line-through;color:#999;font-size:12px">₪${escapeHtml(p.regular_price)}</span></div>`;
+      } else {
+        const price = p.price || p.regular_price || p.sale_price;
+        priceHtml = price ? `<div class="price">₪${escapeHtml(price)}</div>` : '';
+      }
+      
+      wrap.innerHTML = `
+        <img src="${escapeHtml(imgSrc)}" alt="${escapeHtml(p.name || 'מוצר')}" onerror="this.src='https://via.placeholder.com/70?text=No+Image'" />
+        <div class="meta">
+          <div class="name">${escapeHtml(p.name || '')}</div>
+          ${brandText}
+          <div class="desc">${escapeHtml((p.description || '').substring(0, 80))}${p.description && p.description.length > 80 ? '...' : ''}</div>
+          ${priceHtml}
+        </div>
+      `;
+      
+      body.appendChild(wrap);
+    });
+    body.scrollTop = body.scrollHeight;
+  }
+  
+  function addQuickReplies(options) {
+    const container = document.createElement('div');
+    container.className = 'quick-replies';
+    container.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;';
     
-    # Sizes
-    'גדול': ['גדולים', 'לארג', 'large', 'big', 'ענק'],
-    'קטן': ['קטנים', 'סמול', 'small', 'mini', 'מיני', 'זעיר'],
-    'בינוני': ['בינוניים', 'medium', 'מדיום'],
+    options.forEach(option => {
+      const btn = document.createElement('button');
+      btn.className = 'quick-reply-btn';
+      btn.textContent = option;
+      btn.style.cssText = 'padding:8px 12px;border:1px solid #2b65d9;background:#fff;color:#2b65d9;border-radius:16px;font-size:13px;cursor:pointer;transition:all 0.2s;';
+      btn.onmouseover = () => {
+        btn.style.background = '#2b65d9';
+        btn.style.color = '#fff';
+      };
+      btn.onmouseout = () => {
+        btn.style.background = '#fff';
+        btn.style.color = '#2b65d9';
+      };
+      btn.onclick = () => {
+        input.value = option.replace(/^[^\s]+\s/, ''); // Remove emoji
+        send.click();
+      };
+      container.appendChild(btn);
+    });
     
-    # Life stages
-    'גור': ['גורים', 'צעיר', 'junior', 'puppy', 'kitten', 'צעירים'],
-    'בוגר': ['בוגרים', 'adult', 'אדולט'],
-    'מבוגר': ['סניור', 'זקן', 'senior', 'aged', 'מבוגרים'],
-}
+    body.appendChild(container);
+    body.scrollTop = body.scrollHeight;
+  }
+  
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
 
-def expand_query_with_synonyms(query):
-    """Expand query with synonyms for better matching"""
-    expanded = [query.lower()]
-    words = query.lower().split()
+  async function ask(q){
+    if (isLoading) return;
     
-    for word in words:
-        for key, synonyms in SYNONYMS.items():
-            if word in synonyms or word == key:
-                expanded.extend([key] + synonyms)
+    addUser(q);
+    const loading = addLoading();
+    isLoading = true;
+    send.disabled = true;
     
-    return list(set(expanded))
+    try{
+      const res = await fetch(VERCEL_API_BASE + '/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: q, limit: 5 })
+      });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      removeLoading();
+      
+      // Always show bot's message first
+      if (data.message) {
+        addBot(data.message);
+      }
+      
+      // Then show products if available
+      if (data.items && data.items.length > 0) {
+        addProducts(data.items);
+        
+        // Add helpful quick replies after products
+        setTimeout(() => {
+          addQuickReplies([
+            "🔄 הראה עוד",
+            "💰 הזולים ביותר",
+            "⭐ מוצרים דומים"
+          ]);
+        }, 300);
+      }
+      // Don't show "no products" message - the bot's message already handles it
+    } catch(e) {
+      removeLoading();
+      console.error('ShopiBot Error:', e);
+      addBot('הייתה בעיה זמנית בחיבור לשרת. 🔧 אנא נסה שוב בעוד רגע.');
+    } finally {
+      isLoading = false;
+      send.disabled = false;
+    }
+  }
 
-def is_sku_query(query):
-    """Check if query is a SKU search"""
-    # Remove spaces and check if it's mostly numbers
-    clean = query.replace(' ', '').replace('מק"ט', '').replace('מקט', '')
-    return len(clean) > 5 and sum(c.isdigit() for c in clean) > len(clean) * 0.7
-
-def calculate_product_score(product, query_terms, original_query):
-    """Calculate relevance score for ranking"""
-    score = 0
-    name = product.get('name', '').lower()
-    category = product.get('category', '').lower()
-    brand = product.get('brand', '').lower()
-    desc = product.get('description', '').lower()
-    
-    # Exact match in name (50 points)
-    if original_query.lower() in name:
-        score += 50
-    
-    # Partial matches (35 points)
-    name_matches = sum(1 for term in query_terms if term in name)
-    score += min(name_matches * 10, 35)
-    
-    # Category match (25 points)
-    cat_matches = sum(1 for term in query_terms if term in category)
-    score += min(cat_matches * 8, 25)
-    
-    # Brand match (15 points)
-    if any(term in brand for term in query_terms):
-        score += 15
-    
-    # Description match (10 points)
-    desc_matches = sum(1 for term in query_terms if term in desc)
-    score += min(desc_matches * 2, 10)
-    
-    # Availability bonus (25 points)
-    if product.get('in_stock', False):
-        score += 25
-    else:
-        score += 5
-    
-    # Sale bonus (15 points)
-    if product.get('sale_price'):
-        score += 15
-        try:
-            regular = float(str(product['price']).replace(',', '').replace('₪', '').strip())
-            sale = float(str(product['sale_price']).replace(',', '').replace('₪', '').strip())
-            if regular > sale:
-                discount_pct = (regular - sale) / regular
-                score += discount_pct * 5
-        except:
-            pass
-    
-    return score
-
-def fetch_rows():
-    """Fetch products from Google Sheet"""
-    if not creds:
-        print("⚠️ No credentials for Google Sheets")
-        return []
-    
-    try:
-        service = build("sheets", "v4", credentials=creds)
-        sheet = service.spreadsheets()
-        result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=SHEET_RANGE).execute()
-        rows = result.get("values", [])
-        print(f"✅ Fetched {len(rows)} rows from Google Sheets")
-        return rows
-    except Exception as e:
-        print(f"❌ Error fetching rows: {e}")
-        import traceback
-        traceback.print_exc()
-        return []
-
-def get_llm_response(message, products, context=None):
-    """Get response from OpenAI with ShopiBot personality"""
-    if not openai_client:
-        return "הנה כמה מוצרים שמצאתי עבורך! 🐾"
-    
-    try:
-        # Enhanced system prompt based on the instructions
-        system_prompt = """אתה שופיבוט (ShopiBot) - עוזר קניות AI מקצועי של Shopipet.co.il.
-
-חוקים קריטיים:
-1. דבר רק בעברית טבעית וחמה
-2. תשובות קצרות: 1-2 משפטים בלבד (מקסימום 120 תווים)
-3. אל תפרט מוצרים - הם יוצגו בכרטיסים
-4. אל תכלול לינקים או מחירים - הם בכרטיסים
-5. היה טבעי - אל תגיד "בדקתי במאגר" או "לאחר בדיקה"
-
-דוגמאות לתשובות טובות:
-✅ "מצאתי כמה אפשרויות מעולות! תסתכל על המוצרים למטה 🐕"
-✅ "יש לי המלצות נהדרות בשבילך! 😊"
-✅ "הנה בדיוק מה שחיפשת! 🎯"
-
-אל תעשה:
-❌ "בדקתי במאגר ומצאתי..."
-❌ לפרט מוצרים ברשימה
-❌ לכלול מחירים או לינקים
-
-תפקידך: הקדמה קצרה וידידותית בלבד."""
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message}
-        ]
-        
-        # Add context if products exist
-        if products and len(products) > 0:
-            product_hint = f"נמצאו {len(products)} מוצרים רלוונטיים"
-            messages.append({"role": "system", "content": product_hint})
-        
-        completion = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            temperature=0.8,
-            max_tokens=80
-        )
-        
-        response = completion.choices[0].message.content if completion.choices else "הנה מה שמצאתי! 🐾"
-        
-        # Ensure response is short
-        if len(response) > 150:
-            response = response[:147] + "..."
-        
-        return response
-        
-    except Exception as e:
-        print(f"❌ OpenAI error: {e}")
-        return "הנה כמה מוצרים מעולים עבורך! 🐾"
-
-@app.route('/', methods=['GET'])
-@app.route('/api', methods=['GET'])
-@app.route('/api/ping', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        "status": "ok",
-        "message": "ShopiBot API is running ✅",
-        "google_sheets": "connected" if creds else "disconnected",
-        "openai": "connected" if openai_client else "disconnected"
-    })
-
-@app.route('/api/test-sheets', methods=['GET'])
-def test_sheets():
-    """Test Google Sheets connection"""
-    try:
-        rows = fetch_rows()
-        sample = None
-        if rows:
-            r = (rows[0] + [""] * 18)[:18]
-            sample = {
-                "מזהה": r[0], "שם": r[4], "קטגוריות": r[9],
-                "מחיר_רגיל": r[7], "מחיר_מבצע": r[8], 
-                "מותג": r[10], "תמונה": r[17]
-            }
-        
-        return jsonify({
-            "status": "ok",
-            "rows_count": len(rows),
-            "sample_product": sample,
-            "spreadsheet_id": SPREADSHEET_ID,
-            "sheet_range": SHEET_RANGE
-        })
-    except Exception as e:
-        import traceback
-        return jsonify({
-            "status": "error",
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
-
-@app.route('/api/chat', methods=['POST', 'OPTIONS'])
-def chat():
-    """Handle chat requests with ShopiBot intelligence"""
-    
-    if request.method == 'OPTIONS':
-        return '', 200
-    
-    try:
-        req_body = request.get_json() or {}
-        message = req_body.get("message", "").strip()
-        limit = req_body.get("limit", 5)
-        filters = req_body.get("filters", {})
-        
-        # Input validation
-        if not message:
-            return jsonify({
-                "message": "במה אוכל לעזור? 😊",
-                "items": []
-            })
-        
-        if len(message) > 200:
-            return jsonify({
-                "message": "השאלה ארוכה מדי. תוכל לנסח אותה בקצרה?",
-                "items": []
-            })
-        
-        print(f"📩 Received message: {message}")
-        
-        # Check if SKU search
-        is_sku = is_sku_query(message)
-        
-        # Expand query with synonyms
-        query_terms = expand_query_with_synonyms(message)
-        
-        # Fetch products from Google Sheet
-        rows = fetch_rows()
-        items = []
-        
-        for r in rows:
-            r = (r + [""] * 18)[:18]
-            
-            product_id = r[0]
-            sku = r[3]
-            name = r[4]
-            short_desc = r[5]
-            description = r[6]
-            regular_price = r[7]
-            sale_price = r[8]
-            categories = r[9]
-            brand = r[10]
-            product_url = r[16]
-            image_url = r[17]
-            
-            if not name:
-                continue
-            
-            # SKU exact match
-            if is_sku and sku:
-                clean_sku = sku.replace(' ', '')
-                clean_query = message.replace(' ', '').replace('מק"ט', '').replace('מקט', '')
-                if clean_sku == clean_query or clean_query in clean_sku:
-                    items.append({
-                        "id": product_id,
-                        "name": name,
-                        "category": categories,
-                        "price": sale_price if sale_price else regular_price,
-                        "regular_price": regular_price,
-                        "sale_price": sale_price,
-                        "description": short_desc or description,
-                        "image": image_url,
-                        "brand": brand,
-                        "url": product_url,
-                        "sku": sku,
-                        "score": 1000,  # Exact SKU match gets highest score
-                        "in_stock": True
-                    })
-                    break  # Exact SKU match, stop searching
-            
-            # Price filtering
-            price = sale_price if sale_price else regular_price
-            try:
-                price_f = float(str(price).replace(",", "").replace("₪", "").strip())
-            except:
-                price_f = None
-            
-            if filters:
-                if "max_price" in filters and filters["max_price"] and price_f:
-                    if price_f > float(filters["max_price"]):
-                        continue
-                if "min_price" in filters and filters["min_price"] and price_f:
-                    if price_f < float(filters["min_price"]):
-                        continue
-            
-            # Text matching with expanded terms
-            hay = " ".join([
-                str(product_id), str(sku), str(name), str(short_desc),
-                str(description), str(categories), str(brand)
-            ]).lower()
-            
-            # Check if any query term matches
-            matches = any(term in hay for term in query_terms)
-            
-            if matches or not message:  # Empty message shows all
-                product = {
-                    "id": product_id,
-                    "name": name,
-                    "category": categories,
-                    "price": price,
-                    "regular_price": regular_price,
-                    "sale_price": sale_price,
-                    "description": short_desc or description,
-                    "image": image_url,
-                    "brand": brand,
-                    "url": product_url,
-                    "sku": sku,
-                    "in_stock": True  # Assume in stock unless specified
-                }
-                
-                # Calculate score
-                score = calculate_product_score(product, query_terms, message)
-                product["score"] = score
-                
-                items.append(product)
-            
-            if len(items) >= max(50, limit * 3):
-                break
-        
-        # Sort by score
-        items.sort(key=lambda x: x.get("score", 0), reverse=True)
-        top_items = items[:limit]
-        
-        print(f"✅ Found {len(top_items)} products (from {len(items)} candidates)")
-        
-        # Get LLM response
-        if len(top_items) > 0:
-            reply = get_llm_response(message, top_items)
-        else:
-            # Fallback strategies
-            if openai_client:
-                try:
-                    fallback_prompt = """אתה שופיבוט. המשתמש חיפש אבל לא נמצאו מוצרים.
-תן תשובה קצרה (1-2 משפטים) שמציעה לנסות חיפוש אחר או קטגוריות.
-היה חיובי וידידותי. אל תתנצל יותר מדי."""
-                    
-                    fallback_messages = [
-                        {"role": "system", "content": fallback_prompt},
-                        {"role": "user", "content": f"חיפשתי: {message}"}
-                    ]
-                    completion = openai_client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=fallback_messages,
-                        temperature=0.7,
-                        max_tokens=80
-                    )
-                    reply = completion.choices[0].message.content
-                except:
-                    reply = "לא מצאתי בדיוק את זה, אבל נסה לחפש במילים אחרות! 🔍"
-            else:
-                reply = "לא מצאתי מוצרים מתאימים. נסה חיפוש אחר! 🔍"
-        
-        print("✅ Response sent successfully")
-        
-        return jsonify({
-            "message": reply,
-            "items": top_items
-        })
-        
-    except Exception as e:
-        print(f"❌ ERROR: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        
-        return jsonify({
-            "message": "אופס! משהו השתבש. נסה שוב בעוד רגע 🔧",
-            "error": str(e),
-            "items": []
-        }), 500
-
-if __name__ == '__main__':
-    app.run(debug=True)
+  send.addEventListener('click', () => {
+    const q = input.value.trim();
+    if (!q || isLoading) return;
+    input.value = '';
+    ask(q);
+  });
+  
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !isLoading) {
+      send.click();
+    }
+  });
+})();
