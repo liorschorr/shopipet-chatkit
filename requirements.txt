@@ -1,6 +1,5 @@
-fastapi
-mangum
+Flask
+Flask-CORS
 google-api-python-client
 google-auth
 openai
-pydantic
