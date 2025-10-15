@@ -65,12 +65,26 @@ SYNONYMS = {
     'דג': ['דגים', 'fish'],
     
     # Product types
-    'מזון': ['אוכל', 'מזונות', 'אוכלים', 'מאכל', 'food', 'אוכלן'],
+    'מזון': ['אוכל', 'מזונות', 'אוכלים', 'מאכל', 'food', 'אוכלן', 'buy', 'pay', 'purchase', 'acquire'],
     'יבש': ['מזון יבש', 'קיבל', 'dry', 'דראי', 'יבשים'],
     'רטוב': ['מזון רטוב', 'שימורים', 'פחית', 'wet', 'וואט', 'רטובים'],
     'חטיף': ['חטיפים', 'פינוק', 'פינוקים', 'treats', 'snacks', 'נשנושים'],
     'צעצוע': ['צעצועים', 'משחק', 'משחקים', 'toy', 'toys'],
-    'חול': ['ליטר', 'חולות', 'litter', 'sand'],
+    'חול': ['ליטר', 'חולות', 'litter', 'sand', 'box', 'housing', 'unit', 'package'],
+    
+    # Brands
+    'מונג': ['מונג׳', 'monge', 'mong', 'מונז', 'מונז׳'],
+    'פרופלאן': ['proplan', 'פרו פלאן', 'פרו פלן', 'pro plan', 'pro-plan'],
+    'ג׳וסרה': ['גוסרה', 'josera', 'גוזרה', 'ג׳וזרה', 'josra'],
+    'הריטג': ['הריטג׳', 'heritage', 'הריטז', 'הריטז׳', 'recipe'],
+    'אקאנה': ['אקנה', 'acana', 'akana'],
+    
+    # Ingredients
+    'סלמון': ['salmon', 'salomon', 'סלומון'],
+    
+    # Special attributes
+    'סנסיטיב': ['סנסטיב', 'sensitive', 'רגיש'],
+    'מטאבוליק': ['metabolic', 'מטבוליק', 'מתבוליק'],
     
     # Sizes
     'גדול': ['גדולים', 'לארג', 'large', 'big', 'ענק'],
@@ -82,6 +96,44 @@ SYNONYMS = {
     'בוגר': ['בוגרים', 'adult', 'אדולט'],
     'מבוגר': ['סניור', 'זקן', 'senior', 'aged', 'מבוגרים'],
 }
+
+# CRITICAL: Exclusion rules - if searching for one pet, REJECT products with other pets
+PET_EXCLUSIONS = {
+    'כלב': ['חתול', 'חתולים', 'cat', 'cats', 'kitten', 'קיטי', 'חתלתול'],
+    'חתול': ['כלב', 'כלבים', 'dog', 'dogs', 'puppy', 'דוג', 'כלבלב'],
+    'ציפור': ['כלב', 'חתול', 'dog', 'cat', 'כלבים', 'חתולים'],
+    'דג': ['כלב', 'חתול', 'dog', 'cat', 'כלבים', 'חתולים'],
+}
+
+def get_pet_type_from_query(query):
+    """Detect which pet type the user is asking about"""
+    query_lower = query.lower()
+    
+    for pet, synonyms in SYNONYMS.items():
+        if pet in ['כלב', 'חתול', 'ציפור', 'דג', 'גור']:
+            all_terms = [pet] + synonyms
+            if any(term in query_lower for term in all_terms):
+                return pet
+    return None
+
+def should_exclude_product(product_name, product_category, detected_pet):
+    """
+    STRICT RULE: If searching for dogs, NO cat words allowed in name/category.
+    If searching for cats, NO dog words allowed in name/category.
+    """
+    if not detected_pet or detected_pet not in PET_EXCLUSIONS:
+        return False
+    
+    text_to_check = f"{product_name} {product_category}".lower()
+    exclusion_words = PET_EXCLUSIONS[detected_pet]
+    
+    # If ANY exclusion word appears in name or category - REJECT!
+    for word in exclusion_words:
+        if word in text_to_check:
+            print(f"⚠️ EXCLUDED: '{product_name}' contains '{word}' (searching for {detected_pet})")
+            return True
+    
+    return False
 
 def expand_query_with_synonyms(query):
     """Expand query with synonyms for better matching"""
@@ -97,7 +149,6 @@ def expand_query_with_synonyms(query):
 
 def is_sku_query(query):
     """Check if query is a SKU search"""
-    # Remove spaces and check if it's mostly numbers
     clean = query.replace(' ', '').replace('מק"ט', '').replace('מקט', '')
     return len(clean) > 5 and sum(c.isdigit() for c in clean) > len(clean) * 0.7
 
@@ -174,7 +225,6 @@ def get_llm_response(message, products, context=None):
         return "הנה כמה מוצרים שמצאתי עבורך! 🐾"
     
     try:
-        # Enhanced system prompt based on the instructions
         system_prompt = """אתה שופיבוט (ShopiBot) - עוזר קניות AI מקצועי של Shopipet.co.il.
 
 חוקים קריטיים:
@@ -201,7 +251,6 @@ def get_llm_response(message, products, context=None):
             {"role": "user", "content": message}
         ]
         
-        # Add context if products exist
         if products and len(products) > 0:
             product_hint = f"נמצאו {len(products)} מוצרים רלוונטיים"
             messages.append({"role": "system", "content": product_hint})
@@ -215,7 +264,6 @@ def get_llm_response(message, products, context=None):
         
         response = completion.choices[0].message.content if completion.choices else "הנה מה שמצאתי! 🐾"
         
-        # Ensure response is short
         if len(response) > 150:
             response = response[:147] + "..."
         
@@ -279,7 +327,6 @@ def chat():
         limit = req_body.get("limit", 5)
         filters = req_body.get("filters", {})
         
-        # Input validation
         if not message:
             return jsonify({
                 "message": "במה אוכל לעזור? 😊",
@@ -293,6 +340,11 @@ def chat():
             })
         
         print(f"📩 Received message: {message}")
+        
+        # Detect pet type from query
+        detected_pet = get_pet_type_from_query(message)
+        if detected_pet:
+            print(f"🐾 Detected pet type: {detected_pet}")
         
         # Check if SKU search
         is_sku = is_sku_query(message)
@@ -319,8 +371,19 @@ def chat():
             product_url = r[16]
             image_url = r[17]
             
+            # Attributes (L-P)
+            attr1 = r[11] if len(r) > 11 else ""
+            attr2 = r[12] if len(r) > 12 else ""
+            attr3 = r[13] if len(r) > 13 else ""
+            attr4 = r[14] if len(r) > 14 else ""
+            attr5 = r[15] if len(r) > 15 else ""
+            
             if not name:
                 continue
+            
+            # CRITICAL EXCLUSION: If searching for dogs, reject cats (and vice versa)
+            if detected_pet and should_exclude_product(name, categories, detected_pet):
+                continue  # Skip this product entirely!
             
             # SKU exact match
             if is_sku and sku:
@@ -339,10 +402,11 @@ def chat():
                         "brand": brand,
                         "url": product_url,
                         "sku": sku,
-                        "score": 1000,  # Exact SKU match gets highest score
-                        "in_stock": True
+                        "score": 1000,
+                        "in_stock": True,
+                        "attributes": [attr1, attr2, attr3, attr4, attr5]
                     })
-                    break  # Exact SKU match, stop searching
+                    break
             
             # Price filtering
             price = sale_price if sale_price else regular_price
@@ -365,10 +429,9 @@ def chat():
                 str(description), str(categories), str(brand)
             ]).lower()
             
-            # Check if any query term matches
             matches = any(term in hay for term in query_terms)
             
-            if matches or not message:  # Empty message shows all
+            if matches or not message:
                 product = {
                     "id": product_id,
                     "name": name,
@@ -381,10 +444,10 @@ def chat():
                     "brand": brand,
                     "url": product_url,
                     "sku": sku,
-                    "in_stock": True  # Assume in stock unless specified
+                    "in_stock": True,
+                    "attributes": [attr1, attr2, attr3, attr4, attr5]
                 }
                 
-                # Calculate score
                 score = calculate_product_score(product, query_terms, message)
                 product["score"] = score
                 
@@ -403,7 +466,6 @@ def chat():
         if len(top_items) > 0:
             reply = get_llm_response(message, top_items)
         else:
-            # Fallback strategies
             if openai_client:
                 try:
                     fallback_prompt = """אתה שופיבוט. המשתמש חיפש אבל לא נמצאו מוצרים.
