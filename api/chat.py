@@ -26,7 +26,7 @@ CORS(app)  # Enable CORS for all routes
 
 # === Configuration ===
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1-XfEIXT0ovbhkWnBezc4v2xIcmUdONC7mAcep9554q8")
-SHEET_RANGE = os.environ.get("SHEET_RANGE", "Sheet1!A2:F")
+SHEET_RANGE = os.environ.get("SHEET_RANGE", "Sheet1!A2:R")  # 18 columns: A-R
 GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
@@ -54,6 +54,7 @@ if OPENAI_AVAILABLE and OPENAI_API_KEY:
     except Exception as e:
         print(f"❌ OpenAI error: {e}")
 
+
 def fetch_rows():
     """Fetch products from Google Sheet"""
     if not creds:
@@ -69,7 +70,10 @@ def fetch_rows():
         return rows
     except Exception as e:
         print(f"❌ Error fetching rows: {e}")
+        import traceback
+        traceback.print_exc()
         return []
+
 
 def get_llm_response(message, products):
     """Get response from OpenAI"""
@@ -78,14 +82,22 @@ def get_llm_response(message, products):
     
     try:
         system_prompt = (
-            "You are ShopiBot, a helpful Hebrew-speaking assistant for a pet supply store. "
+            "You are ShopiBot, a helpful Hebrew-speaking assistant for a pet supply store (ShopiPet). "
             "Answer clearly and concisely in Hebrew. Reference recommended products when relevant. "
-            "Prices are in ILS (₪). Keep tone warm and friendly."
+            "Prices are in ILS (₪). Keep tone warm and friendly. "
+            "When recommending products, mention the brand if available."
         )
         
         products_for_llm = [
-            {"id": p["id"], "name": p["name"], "category": p["category"], 
-             "price": p["price"], "description": p["description"]}
+            {
+                "id": p["id"], 
+                "name": p["name"], 
+                "category": p["category"], 
+                "price": p["price"], 
+                "description": p["description"],
+                "brand": p.get("brand", ""),
+                "url": p.get("url", "")
+            }
             for p in products[:5]  # Top 5 only
         ]
         
@@ -106,7 +118,10 @@ def get_llm_response(message, products):
         
     except Exception as e:
         print(f"❌ OpenAI error: {e}")
-        return f"סליחה, יש לי בעיה זמנית. ({str(e)[:50]})"
+        import traceback
+        traceback.print_exc()
+        return f"סליחה, יש לי בעיה זמנית. נסה שוב בעוד רגע."
+
 
 @app.route('/', methods=['GET'])
 @app.route('/api', methods=['GET'])
@@ -119,6 +134,47 @@ def health_check():
         "google_sheets": "connected" if creds else "disconnected",
         "openai": "connected" if openai_client else "disconnected"
     })
+
+
+@app.route('/api/test-sheets', methods=['GET'])
+def test_sheets():
+    """Test Google Sheets connection"""
+    try:
+        rows = fetch_rows()
+        
+        # Parse first row to show structure
+        sample = None
+        if rows:
+            r = (rows[0] + [""] * 18)[:18]
+            sample = {
+                "מזהה": r[0], 
+                "שם": r[4], 
+                "קטגוריות": r[9],
+                "מחיר_רגיל": r[7], 
+                "מחיר_מבצע": r[8], 
+                "מותג": r[10], 
+                "תמונה": r[17]
+            }
+        
+        return jsonify({
+            "status": "ok",
+            "rows_count": len(rows),
+            "sample_product": sample,
+            "credentials_present": bool(GOOGLE_CREDENTIALS),
+            "creds_initialized": bool(creds),
+            "spreadsheet_id": SPREADSHEET_ID,
+            "sheet_range": SHEET_RANGE
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "credentials_present": bool(GOOGLE_CREDENTIALS),
+            "creds_initialized": bool(creds)
+        }), 500
+
 
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])
 def chat():
@@ -142,16 +198,43 @@ def chat():
         items = []
         
         for r in rows:
-            # Pad row to ensure 6 columns
-            r = (r + [""] * 6)[:6]
-            pid, name, category, price, desc, img = r
+            # Pad row to ensure 18 columns (A-R)
+            r = (r + [""] * 18)[:18]
+            
+            # Map columns according to structure:
+            # A=מזהה, B=מזהה אב, C=סוג, D=מק"ט, E=שם, F=תיאור קצר, 
+            # G=תיאור, H=מחיר רגיל, I=מחיר מבצע, J=קטגוריות, K=מותג,
+            # L-P=תכונות 1-5, Q=URL, R=IMAGE URL
+            
+            product_id = r[0]       # מזהה (A)
+            parent_id = r[1]        # מזהה אב (B)
+            product_type = r[2]     # סוג (C)
+            sku = r[3]              # מק"ט (D)
+            name = r[4]             # שם (E)
+            short_desc = r[5]       # תיאור קצר (F)
+            description = r[6]      # תיאור (G)
+            regular_price = r[7]    # מחיר רגיל (H)
+            sale_price = r[8]       # מחיר מבצע (I)
+            categories = r[9]       # קטגוריות (J)
+            brand = r[10]           # מותג (K)
+            attr1 = r[11]           # תכונה 1 (L)
+            attr2 = r[12]           # תכונה 2 (M)
+            attr3 = r[13]           # תכונה 3 (N)
+            attr4 = r[14]           # תכונה 4 (O)
+            attr5 = r[15]           # תכונה 5 (P)
+            product_url = r[16]     # URL (Q)
+            image_url = r[17]       # IMAGE URL (R)
             
             if not name:  # Skip empty rows
                 continue
             
-            # Parse price
+            # Use sale price if available, otherwise regular price
+            price = sale_price if sale_price else regular_price
+            
+            # Parse price for filtering
             try:
-                price_f = float(str(price).replace(",", "").replace("₪", "").strip())
+                price_str = str(price).replace(",", "").replace("₪", "").strip()
+                price_f = float(price_str) if price_str else None
             except:
                 price_f = None
             
@@ -159,10 +242,19 @@ def chat():
             ok = True
             if filters:
                 if "category" in filters and filters["category"]:
-                    if str(category).lower().strip() != str(filters["category"]).lower().strip():
+                    cat_filter = str(filters["category"]).lower().strip()
+                    cat_product = str(categories).lower().strip()
+                    if cat_filter not in cat_product and cat_product not in cat_filter:
                         ok = False
+                
                 if "max_price" in filters and filters["max_price"] and price_f:
                     if price_f > float(filters["max_price"]):
+                        ok = False
+                
+                if "brand" in filters and filters["brand"]:
+                    brand_filter = str(filters["brand"]).lower().strip()
+                    brand_product = str(brand).lower().strip()
+                    if brand_filter not in brand_product and brand_product not in brand_filter:
                         ok = False
             
             if not ok:
@@ -170,30 +262,44 @@ def chat():
             
             # Text matching score
             ql = message.lower()
-            hay = " ".join([pid, name, category, str(price), desc]).lower()
+            hay = " ".join([
+                str(product_id), str(sku), str(name), str(short_desc), 
+                str(description), str(categories), str(brand),
+                str(attr1), str(attr2), str(attr3), str(attr4), str(attr5)
+            ]).lower()
+            
             score = 1
-            if ql and ql in hay:
-                score += 2
+            if ql:
+                # Count how many query words appear in the product text
+                query_words = ql.split()
+                matches = sum(1 for word in query_words if word in hay)
+                score += matches * 2
+            
+            # Combine description (prefer short description)
+            full_desc = short_desc if short_desc else description
             
             items.append({
-                "id": pid,
+                "id": product_id,
                 "name": name,
-                "category": category,
+                "category": categories,
                 "price": price,
-                "description": desc,
-                "image": img,
+                "description": full_desc,
+                "image": image_url,
+                "brand": brand,
+                "url": product_url,
+                "sku": sku,
                 "score": score
             })
             
-            # Limit results
-            if len(items) >= max(20, limit * 2):
+            # Limit results during processing
+            if len(items) >= max(50, limit * 3):
                 break
         
-        # Sort by relevance
+        # Sort by relevance score
         items.sort(key=lambda x: x.get("score", 0), reverse=True)
         top_items = items[:limit]
         
-        print(f"✅ Found {len(top_items)} products")
+        print(f"✅ Found {len(top_items)} products (from {len(items)} candidates)")
         
         # Get LLM response
         reply = get_llm_response(message, top_items)
@@ -216,5 +322,7 @@ def chat():
             "items": []
         }), 500
 
+
 # Vercel needs this
-app = app
+if __name__ == '__main__':
+    app.run(debug=True)
