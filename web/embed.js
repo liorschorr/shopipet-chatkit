@@ -24,6 +24,8 @@
   .prod .meta{flex:1;font-size:13px;min-width:0}
   .prod .name{font-weight:600;margin-bottom:4px;color:#333;line-height:1.3}
   .prod .brand{color:#666;font-size:12px;margin-bottom:4px}
+  .prod .attrs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+  .prod .attr-tag{background:#e8f4ff;color:#2b65d9;font-size:11px;padding:2px 6px;border-radius:4px;white-space:nowrap}
   .prod .desc{color:#666;font-size:12px;line-height:1.3;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .prod .price{font-weight:700;color:#2b65d9;font-size:15px}
   .quick-replies{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
@@ -136,6 +138,19 @@
       const imgSrc = p.image || 'https://via.placeholder.com/70?text=No+Image';
       const brandText = p.brand ? `<div class="brand">🏷️ ${escapeHtml(p.brand)}</div>` : '';
       
+      // Get first 2 non-empty attributes
+      let attributesHtml = '';
+      if (p.attributes && Array.isArray(p.attributes)) {
+        const validAttrs = p.attributes.filter(attr => attr && attr.trim() !== '').slice(0, 2);
+        if (validAttrs.length > 0) {
+          attributesHtml = '<div class="attrs">';
+          validAttrs.forEach(attr => {
+            attributesHtml += `<span class="attr-tag">✓ ${escapeHtml(attr)}</span>`;
+          });
+          attributesHtml += '</div>';
+        }
+      }
+      
       // Show sale price if available
       let priceHtml = '';
       if (p.sale_price && p.regular_price && p.sale_price !== p.regular_price) {
@@ -150,6 +165,7 @@
         <div class="meta">
           <div class="name">${escapeHtml(p.name || '')}</div>
           ${brandText}
+          ${attributesHtml}
           <div class="desc">${escapeHtml((p.description || '').substring(0, 80))}${p.description && p.description.length > 80 ? '...' : ''}</div>
           ${priceHtml}
         </div>
@@ -169,7 +185,7 @@
       const btn = document.createElement('button');
       btn.className = 'quick-reply-btn';
       btn.textContent = option;
-      btn.style.cssText = 'padding:8px 12px;border:1px solid #2b65d9;background:#fff;color:#2b65d9;border-radius:16px;font-size:13px;cursor:pointer;transition:all 0.2s;';
+      btn.style.cssText = 'padding:8px 12px;border:1px solid #2b65d9;background:#fff;color:#2b65d9;border-radius:16px;font-size:13px;cursor:pointer;transition:all 0.2s;font-family:inherit;';
       btn.onmouseover = () => {
         btn.style.background = '#2b65d9';
         btn.style.color = '#fff';
