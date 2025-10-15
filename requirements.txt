@@ -1,5 +1,6 @@
 fastapi
-uvicorn
+mangum
 google-api-python-client
 google-auth
-openai>=1.0.0
+openai
+pydantic
