@@ -1,13 +1,19 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/chat.py", "use": "@vercel/python" },
-    { "src": "web/embed.js", "use": "@vercel/static" }
+    {
+      "src": "api/chat.py",
+      "use": "@vercel/python"
+    }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "api/chat.py" },
-    { "src": "/web/embed.js", "dest": "web/embed.js" },
-    { "src": "/", "dest": "web/embed.js" }
+    {
+      "src": "/api/(.*)",
+      "dest": "api/chat.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "api/chat.py"
+    }
   ]
 }
-
