@@ -90,49 +90,48 @@ def fetch_rows():
 def get_llm_response(message, products):
     """Get response from OpenAI"""
     if not openai_client:
-        return "אני כאן לעזור! (OpenAI לא מחובר כרגע)"
+        return "אני כאן לעזור!"
     
     try:
         system_prompt = (
-            "You are ShopiBot, a helpful Hebrew-speaking assistant for a pet supply store (ShopiPet). "
-            "Answer clearly and concisely in Hebrew. Reference recommended products when relevant. "
-            "Prices are in ILS (₪). Keep tone warm and friendly. "
-            "When recommending products, mention the brand if available."
+            "You are ShopiBot, a friendly Hebrew-speaking assistant for ShopiPet, a pet supply store. "
+            "Your role is to provide a brief, warm introduction to the products that will be displayed below your message. "
+            "\n\nIMPORTANT RULES:"
+            "\n- Write ONLY in Hebrew"
+            "\n- Keep response under 2-3 sentences (max 150 characters)"
+            "\n- Be warm and conversational"
+            "\n- DO NOT list products - they will be shown automatically as cards"
+            "\n- DO NOT include links or prices - they are in the product cards"
+            "\n- Just give a brief helpful intro or recommendation"
+            "\n\nExamples of GOOD responses:"
+            "\n- 'מצאתי כמה אפשרויות מעולות עבור הכלב שלך! תסתכל על המוצרים מטה 🐕'"
+            "\n- 'יש לי המלצות נהדרות בשבילך! בחרתי את המוצרים הכי מתאימים 😊'"
+            "\n- 'הנה כמה מוצרים איכותיים שמתאימים בדיוק למה שחיפשת! 🎯'"
         )
         
-        products_for_llm = [
-            {
-                "id": p["id"], 
-                "name": p["name"], 
-                "category": p["category"], 
-                "price": p["price"], 
-                "description": p["description"],
-                "brand": p.get("brand", ""),
-                "url": p.get("url", "")
-            }
-            for p in products[:5]  # Top 5 only
-        ]
+        # Only send product names for context, not full details
+        product_context = ", ".join([p["name"][:30] for p in products[:3]])
         
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": message},
-            {"role": "system", "content": "Available products: " + json.dumps(products_for_llm, ensure_ascii=False)}
+            {"role": "system", "content": f"Products available (for context only): {product_context}"}
         ]
         
         completion = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
-            temperature=0.4,
-            max_tokens=300
+            temperature=0.7,
+            max_tokens=100  # Limit response length
         )
         
-        return completion.choices[0].message.content if completion.choices else "אני כאן לעזור!"
+        return completion.choices[0].message.content if completion.choices else "הנה כמה אפשרויות נהדרות! 🐾"
         
     except Exception as e:
         print(f"❌ OpenAI error: {e}")
         import traceback
         traceback.print_exc()
-        return f"סליחה, יש לי בעיה זמנית. נסה שוב בעוד רגע."
+        return "הנה כמה מוצרים שמצאתי עבורך! 🐾"
 
 
 @app.route('/', methods=['GET'])
@@ -314,7 +313,27 @@ def chat():
         print(f"✅ Found {len(top_items)} products (from {len(items)} candidates)")
         
         # Get LLM response
-        reply = get_llm_response(message, top_items)
+        if len(top_items) > 0:
+            reply = get_llm_response(message, top_items)
+        else:
+            # No products found - give helpful response
+            if openai_client:
+                try:
+                    fallback_messages = [
+                        {"role": "system", "content": "You are ShopiBot for ShopiPet. User searched but no products found. Give a brief, helpful suggestion in Hebrew (2 sentences max). Suggest trying different search terms or categories."},
+                        {"role": "user", "content": message}
+                    ]
+                    completion = openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=fallback_messages,
+                        temperature=0.7,
+                        max_tokens=100
+                    )
+                    reply = completion.choices[0].message.content
+                except:
+                    reply = "מצטער, לא מצאתי מוצרים מתאימים לחיפוש שלך. נסה לחפש במילים אחרות או בקטגוריות שונות! 🔍"
+            else:
+                reply = "מצטער, לא מצאתי מוצרים מתאימים. נסה לחפש במילים אחרות! 🔍"
         
         print("✅ Response sent successfully")
         
