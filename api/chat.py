@@ -19,14 +19,6 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
     print("Warning: OpenAI not available")
-# Print environment info on startup
-print(f"=== ENVIRONMENT CHECK ===")
-print(f"OPENAI_API_KEY present: {bool(os.environ.get('OPENAI_API_KEY'))}")
-if os.environ.get('OPENAI_API_KEY'):
-    key = os.environ.get('OPENAI_API_KEY')
-    print(f"OPENAI_API_KEY length: {len(key)}")
-    print(f"OPENAI_API_KEY starts with: {key[:10]}...")
-print(f"========================")
 
 # === Create Flask app ===
 app = Flask(__name__)
@@ -55,12 +47,24 @@ if GOOGLE_AVAILABLE and GOOGLE_CREDENTIALS:
         print(f"❌ Google credentials error: {e}")
 
 # Try to initialize OpenAI
+print(f"🔍 Debug: OPENAI_AVAILABLE = {OPENAI_AVAILABLE}")
+print(f"🔍 Debug: OPENAI_API_KEY exists = {bool(OPENAI_API_KEY)}")
+print(f"🔍 Debug: OPENAI_API_KEY length = {len(OPENAI_API_KEY) if OPENAI_API_KEY else 0}")
+print(f"🔍 Debug: OPENAI_API_KEY starts with = {OPENAI_API_KEY[:7] if OPENAI_API_KEY else 'None'}...")
+
 if OPENAI_AVAILABLE and OPENAI_API_KEY:
     try:
         openai_client = OpenAI(api_key=OPENAI_API_KEY)
-        print("✅ OpenAI initialized")
+        print("✅ OpenAI initialized successfully")
     except Exception as e:
-        print(f"❌ OpenAI error: {e}")
+        print(f"❌ OpenAI initialization error: {e}")
+        import traceback
+        traceback.print_exc()
+else:
+    if not OPENAI_AVAILABLE:
+        print("❌ OpenAI library not available")
+    if not OPENAI_API_KEY:
+        print("❌ OPENAI_API_KEY not set in environment")
 
 
 def fetch_rows():
