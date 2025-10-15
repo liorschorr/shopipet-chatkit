@@ -19,6 +19,14 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
     print("Warning: OpenAI not available")
+# Print environment info on startup
+print(f"=== ENVIRONMENT CHECK ===")
+print(f"OPENAI_API_KEY present: {bool(os.environ.get('OPENAI_API_KEY'))}")
+if os.environ.get('OPENAI_API_KEY'):
+    key = os.environ.get('OPENAI_API_KEY')
+    print(f"OPENAI_API_KEY length: {len(key)}")
+    print(f"OPENAI_API_KEY starts with: {key[:10]}...")
+print(f"========================")
 
 # === Create Flask app ===
 app = Flask(__name__)
