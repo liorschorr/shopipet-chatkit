@@ -6,7 +6,7 @@
       "use": "@vercel/python"
     },
     {
-      "src": "embed.js",
+      "src": "web/embed.js",
       "use": "@vercel/static"
     }
   ],
@@ -16,8 +16,8 @@
       "dest": "api/chat.py"
     },
     {
-      "src": "/embed.js",
-      "dest": "embed.js"
+      "src": "/web/embed.js",
+      "dest": "web/embed.js"
     },
     {
       "src": "/",
