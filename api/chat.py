@@ -11,7 +11,11 @@ app = FastAPI(title="ShopiBot Chat API")
 # CORS for website use
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://dev.shopipet.co.il",
+        "https://shopipet.co.il",
+        "https://www.shopipet.co.il"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
