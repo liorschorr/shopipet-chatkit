@@ -3,27 +3,28 @@
 
   const style = document.createElement('style');
   style.innerHTML = `
-  .shopibot-bubble{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:#2b65d9;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:999999;transition:transform 0.2s}
+  .shopibot-bubble{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:#2b65d9;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:999999;transition:transform 0.2s;font-size:24px}
   .shopibot-bubble:hover{transform:scale(1.1)}
   .shopibot-panel{position:fixed;bottom:92px;right:24px;width:360px;max-width:92vw;height:520px;background:#fff;border-radius:16px;box-shadow:0 16px 40px rgba(0,0,0,.22);display:none;flex-direction:column;overflow:hidden;z-index:999998}
   .shopibot-header{padding:12px 14px;background:#2b65d9;color:#fff;font-weight:600;display:flex;justify-content:space-between;align-items:center}
-  .shopibot-close{cursor:pointer;font-size:20px;padding:0 4px}
+  .shopibot-close{cursor:pointer;font-size:24px;padding:0 4px;line-height:1}
   .shopibot-body{padding:12px;overflow-y:auto;height:100%;display:flex;flex-direction:column;gap:8px}
   .shopibot-input{display:flex;gap:8px;padding:12px;border-top:1px solid #eee}
-  .shopibot-input input{flex:1;padding:10px;border:1px solid #ddd;border-radius:10px;font-size:14px}
-  .shopibot-input button{padding:10px 14px;border:none;border-radius:10px;background:#2b65d9;color:#fff;cursor:pointer;font-weight:600}
+  .shopibot-input input{flex:1;padding:10px;border:1px solid #ddd;border-radius:10px;font-size:14px;font-family:inherit}
+  .shopibot-input button{padding:10px 14px;border:none;border-radius:10px;background:#2b65d9;color:#fff;cursor:pointer;font-weight:600;font-family:inherit}
   .shopibot-input button:hover{background:#1e4db8}
-  .msg{margin:4px 0;padding:10px 12px;border-radius:12px;max-width:85%;font-size:14px;line-height:1.4}
+  .shopibot-input button:disabled{background:#ccc;cursor:not-allowed}
+  .msg{margin:4px 0;padding:10px 12px;border-radius:12px;max-width:85%;font-size:14px;line-height:1.5}
   .msg.user{background:#f1f5ff;margin-left:auto;text-align:right}
   .msg.bot{background:#f7f7f7}
   .msg.loading{background:#f0f0f0;color:#999;font-style:italic}
-  .prod{display:flex;gap:10px;border:1px solid #e5e5e5;padding:10px;border-radius:12px;margin:6px 0;cursor:pointer;transition:all 0.2s;text-decoration:none;color:inherit}
+  .prod{display:flex;gap:10px;border:1px solid #e5e5e5;padding:10px;border-radius:12px;margin:6px 0;cursor:pointer;transition:all 0.2s;text-decoration:none;color:inherit;background:#fff}
   .prod:hover{border-color:#2b65d9;box-shadow:0 2px 8px rgba(43,101,217,0.1);transform:translateY(-2px)}
-  .prod img{width:70px;height:70px;object-fit:cover;border-radius:8px}
-  .prod .meta{flex:1;font-size:13px}
-  .prod .name{font-weight:600;margin-bottom:4px;color:#333}
+  .prod img{width:70px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0}
+  .prod .meta{flex:1;font-size:13px;min-width:0}
+  .prod .name{font-weight:600;margin-bottom:4px;color:#333;line-height:1.3}
   .prod .brand{color:#666;font-size:12px;margin-bottom:4px}
-  .prod .desc{color:#666;font-size:12px;line-height:1.3;margin-bottom:4px}
+  .prod .desc{color:#666;font-size:12px;line-height:1.3;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .prod .price{font-weight:700;color:#2b65d9;font-size:15px}
   `;
   document.head.appendChild(style);
@@ -31,13 +32,14 @@
   const bubble = document.createElement('div');
   bubble.className = 'shopibot-bubble';
   bubble.innerHTML = '💬';
+  bubble.title = 'פתח צ׳אט עם ShopiBot';
   
   const panel = document.createElement('div');
   panel.className = 'shopibot-panel';
   panel.innerHTML = `
     <div class="shopibot-header">
       <span>ShopiBot • עוזר לבעלי חיים</span>
-      <span class="shopibot-close">×</span>
+      <span class="shopibot-close" title="סגור">×</span>
     </div>
     <div class="shopibot-body" id="shopibot-body"></div>
     <div class="shopibot-input">
@@ -53,9 +55,11 @@
   const input = panel.querySelector('#shopibot-input');
   const send = panel.querySelector('#shopibot-send');
   const closeBtn = panel.querySelector('.shopibot-close');
+  
+  let isLoading = false;
 
   function toggle(){ 
-    panel.style.display = panel.style.display==='flex' ? 'none' : 'flex'; 
+    panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; 
     if (panel.style.display === 'flex') {
       input.focus();
     }
@@ -65,7 +69,7 @@
     if (panel.style.display !== 'flex') {
       panel.style.display = 'flex';
       if (body.children.length === 0) {
-        addBot("שלום! איך אפשר לעזור? ספר לי על החיה שלך ומה אתה מחפש.");
+        addBot("שלום! 👋 אני כאן לעזור לך למצוא את המוצרים המושלמים לחיית המחמד שלך. מה אתה מחפש?");
       }
       input.focus();
     } else {
@@ -107,22 +111,25 @@
   }
   
   function addProducts(items){
+    if (!items || items.length === 0) return;
+    
     items.forEach(p => {
       const wrap = document.createElement('a');
       wrap.className = 'prod';
       wrap.href = p.url || '#';
       wrap.target = p.url ? '_blank' : '_self';
+      wrap.rel = 'noopener noreferrer';
       
       const imgSrc = p.image || 'https://via.placeholder.com/70?text=No+Image';
-      const brandText = p.brand ? `<div class="brand">🏷️ ${p.brand}</div>` : '';
-      const priceText = p.price ? `₪${p.price}` : '';
+      const brandText = p.brand ? `<div class="brand">🏷️ ${escapeHtml(p.brand)}</div>` : '';
+      const priceText = p.price ? `₪${escapeHtml(p.price)}` : '';
       
       wrap.innerHTML = `
-        <img src="${imgSrc}" alt="${p.name || ''}" onerror="this.src='https://via.placeholder.com/70?text=No+Image'" />
+        <img src="${escapeHtml(imgSrc)}" alt="${escapeHtml(p.name || 'מוצר')}" onerror="this.src='https://via.placeholder.com/70?text=No+Image'" />
         <div class="meta">
-          <div class="name">${p.name || ''}</div>
+          <div class="name">${escapeHtml(p.name || '')}</div>
           ${brandText}
-          <div class="desc">${(p.description || '').substring(0, 60)}${p.description && p.description.length > 60 ? '...' : ''}</div>
+          <div class="desc">${escapeHtml((p.description || '').substring(0, 80))}${p.description && p.description.length > 80 ? '...' : ''}</div>
           <div class="price">${priceText}</div>
         </div>
       `;
@@ -131,10 +138,20 @@
     });
     body.scrollTop = body.scrollHeight;
   }
+  
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
 
   async function ask(q){
+    if (isLoading) return;
+    
     addUser(q);
     const loading = addLoading();
+    isLoading = true;
+    send.disabled = true;
     
     try{
       const res = await fetch(VERCEL_API_BASE + '/api/chat', {
@@ -143,30 +160,43 @@
         body: JSON.stringify({ message: q, limit: 5 })
       });
       
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
       removeLoading();
       
-      addBot(data.message || 'הנה התוצאות שמצאתי.');
-      if (data.items && data.items.length) {
-        addProducts(data.items);
-      } else {
-        addBot('מצטער, לא מצאתי מוצרים מתאימים. נסה חיפוש אחר או שאל אותי על מוצרים ספציפיים.');
+      // Always show bot's message first
+      if (data.message) {
+        addBot(data.message);
       }
+      
+      // Then show products if available
+      if (data.items && data.items.length > 0) {
+        addProducts(data.items);
+      }
+      // Don't show "no products" message - the bot's message already handles it
     } catch(e) {
       removeLoading();
       console.error('ShopiBot Error:', e);
-      addBot('הייתה בעיה זמנית. נסה שוב בעוד רגע.');
+      addBot('הייתה בעיה זמנית בחיבור לשרת. 🔧 אנא נסה שוב בעוד רגע.');
+    } finally {
+      isLoading = false;
+      send.disabled = false;
     }
   }
 
   send.addEventListener('click', () => {
     const q = input.value.trim();
-    if (!q) return;
+    if (!q || isLoading) return;
     input.value = '';
     ask(q);
   });
   
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') send.click();
+    if (e.key === 'Enter' && !isLoading) {
+      send.click();
+    }
   });
 })();
