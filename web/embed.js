@@ -1,6 +1,5 @@
 (function () {
-  // Minimal floating chat for WooCommerce that calls /api/chat on your Vercel domain.
-  const VERCEL_API_BASE = 'https://YOUR-VERCEL-DOMAIN.vercel.app';
+  const VERCEL_API_BASE = 'https://shopipet-chatkit.vercel.app';
 
   const style = document.createElement('style');
   style.innerHTML = `
@@ -85,8 +84,8 @@
     try{
       const res = await fetch(VERCEL_API_BASE + '/api/chat', {
         method: 'POST',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify({{ message: q, limit: 5 }})
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: q, limit: 5 })
       });
       const data = await res.json();
       const last = body.querySelector('.msg.bot:last-child');
@@ -105,6 +104,6 @@
     ask(q);
   });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {{ send.click(); }}
+    if (e.key === 'Enter') send.click();
   });
 })();
