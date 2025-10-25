@@ -65,3 +65,13 @@
     }
   }
 }
+{
+  "version": 2,
+  "builds": [
+    { "src": "api/chat.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    { "src": "/openapi.json", "dest": "/openapi.json" },
+    { "src": "/(.*)", "dest": "api/chat.py" }
+  ]
+}
