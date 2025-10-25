@@ -44,8 +44,8 @@
 
   .shopibot-header {
     padding: 14px;
-    background: #fbda16;
-    color: #222;
+    background: #f3e7f1;
+    color: #3b2e3a;
     font-weight: 600;
     text-align: center;
     font-size: 16px;
@@ -55,7 +55,7 @@
     flex: 1;
     overflow-y: auto;
     padding: 12px;
-    background: #f7f7f7;
+    background: #fafafa;
   }
 
   .shopibot-input {
@@ -98,6 +98,21 @@
     border: 1px solid #eee;
   }
 
+  .option-btn {
+    display: inline-block;
+    background: #f3e7f1;
+    color: #3b2e3a;
+    padding: 8px 14px;
+    border-radius: 20px;
+    margin: 4px 3px;
+    font-size: 14px;
+    cursor: pointer;
+    border: none;
+  }
+  .option-btn:hover {
+    background: #ebd4ea;
+  }
+
   @media (max-width: 600px) {
     .shopibot-panel {
       right: 0;
@@ -125,13 +140,13 @@
   // bubble
   const bubble = document.createElement('div');
   bubble.className = 'shopibot-bubble';
-  bubble.innerHTML = `<img src="https://www.shopipet.co.il/wp-content/uploads/2025/10/shopibot-logo.png" alt="ShopiBot" />`;
+  bubble.innerHTML = `<img src="https://www.shopipet.co.il/wp-content/uploads/2025/10/shopibot-logo.png" alt="שופיבוט" />`;
 
   // panel
   const panel = document.createElement('div');
   panel.className = 'shopibot-panel';
   panel.innerHTML = `
-    <div class="shopibot-header">ShopiBot • עזרה לבעלי חיים</div>
+    <div class="shopibot-header">שופיבוט • עזרה לבעלי חיים</div>
     <div class="shopibot-body" id="shopibot-body"></div>
     <div class="shopibot-input">
       <input id="shopibot-input" placeholder="מה אתה מחפש היום?" />
@@ -148,7 +163,7 @@
   bubble.addEventListener('click', () => {
     const isOpen = panel.style.display === 'flex';
     togglePanel(!isOpen);
-    if (!isOpen) addBot("שלום! איך אפשר לעזור? ספר לי על החיה שלך ומה אתה מחפש 🐾");
+    if (!isOpen) showWelcome();
   });
 
   const body = panel.querySelector('#shopibot-body');
@@ -162,12 +177,35 @@
     body.appendChild(el);
     body.scrollTop = body.scrollHeight;
   }
+
   function addBot(text) {
     const el = document.createElement('div');
     el.className = 'msg bot';
     el.textContent = text;
     body.appendChild(el);
     body.scrollTop = body.scrollHeight;
+  }
+
+  function addOptions(options) {
+    const container = document.createElement('div');
+    options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.className = 'option-btn';
+      btn.textContent = opt;
+      btn.onclick = () => {
+        container.remove();
+        ask(opt);
+      };
+      container.appendChild(btn);
+    });
+    body.appendChild(container);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function showWelcome() {
+    body.innerHTML = '';
+    addBot('שלום! אני שופיבוט 🐶 איך אפשר לעזור היום?');
+    addOptions(['מזון לכלב', 'חטיפים', 'ציוד טיפוח', 'צעצועים', 'מוצרים לחתול']);
   }
 
   async function ask(q) {
@@ -193,11 +231,12 @@
     input.value = '';
     ask(q);
   });
+
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') send.click();
   });
 
-  // fix for mobile keyboard
+  // תיקון תצוגה במקלדת מובייל
   window.addEventListener('resize', () => {
     if (window.innerHeight < 500) {
       panel.style.height = '85vh';
