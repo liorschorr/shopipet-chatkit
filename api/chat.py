@@ -508,3 +508,11 @@ def chat():
 
 if __name__ == '__main__':
     app.run(debug=True)
+from flask import send_from_directory
+import os
+
+@app.route("/openapi.json")
+def serve_openapi():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    public_dir = os.path.join(current_dir, "..", "public")
+    return send_from_directory(public_dir, "openapi.json")
