@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "ShopiBot Chat API",
+    "title": "ShopiBot API",
     "version": "1.0.0",
-    "description": "API לצ'אטבוט ShopiBot למציאת מוצרים לחיות מחמד באתר Shopipet.co.il"
+    "description": "API לצ'אטבוט של Shopipet.co.il - חנות מוצרים לחיות מחמד"
   },
   "servers": [
     { "url": "https://shopipet-chatkit.vercel.app" }
@@ -11,15 +11,15 @@
   "paths": {
     "/api/ping": {
       "get": {
-        "summary": "Check API health",
-        "responses": { "200": { "description": "OK" } }
+        "summary": "Check if API is alive",
+        "responses": {
+          "200": { "description": "API is running" }
+        }
       }
     },
     "/api/chat": {
       "post": {
-        "summary": "Search for pet products",
-        "description": "Receive a user query and return relevant products from Google Sheets.",
-        "operationId": "shopipet_search",
+        "summary": "Ask ShopiBot a question",
         "requestBody": {
           "required": true,
           "content": {
@@ -27,7 +27,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "message": { "type": "string", "description": "User query" },
+                  "message": { "type": "string" },
                   "limit": { "type": "integer", "default": 5 }
                 },
                 "required": ["message"]
@@ -37,7 +37,7 @@
         },
         "responses": {
           "200": {
-            "description": "List of matching products",
+            "description": "Chat response with products",
             "content": {
               "application/json": {
                 "schema": {
