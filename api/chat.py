@@ -60,7 +60,7 @@ SYNONYMS = {
     # Pet names
     'כלב': ['כלבים', 'דוג', 'דוגי', 'כלבלב', 'puppy', 'dog', 'dogs'],
     'חתול': ['חתולים', 'קיטי', 'חתולון', 'חתלתול', 'cat', 'kitten', 'cats'],
-    'גור': ['גורים', 'גור כלבים', 'גור חתולים', 'puppies', 'kittens'],
+    'גור': ['גורים', 'גור כלבים', 'גור חתולים', 'puppies', 'kittens', 'צעיר', 'צעירים', 'גורון', 'גוריה'],
     'ציפור': ['ציפורים', 'bird', 'birds'],
     'דג': ['דגים', 'fish'],
     
@@ -109,19 +109,54 @@ def get_pet_type_from_query(query):
     """Detect which pet type the user is asking about"""
     query_lower = query.lower()
     
+    # Priority check for "גור" - it's always about pets!
+    if any(word in query_lower for word in ['גור', 'גורים', 'puppy', 'puppies', 'kitten', 'kittens']):
+        # Try to detect if dog or cat puppy
+        if any(word in query_lower for word in ['כלב', 'כלבים', 'dog', 'puppy', 'puppies']):
+            return 'כלב'
+        elif any(word in query_lower for word in ['חתול', 'חתולים', 'cat', 'kitten', 'kittens']):
+            return 'חתול'
+        else:
+            return 'גור'  # Generic puppy/kitten
+    
     for pet, synonyms in SYNONYMS.items():
-        if pet in ['כלב', 'חתול', 'ציפור', 'דג', 'גור']:
+        if pet in ['כלב', 'חתול', 'ציפור', 'דג']:
             all_terms = [pet] + synonyms
             if any(term in query_lower for term in all_terms):
                 return pet
     return None
 
+def is_pet_related_query(query):
+    """Check if query is related to pets at all"""
+    query_lower = query.lower()
+    
+    pet_indicators = [
+        # Animals
+        'כלב', 'חתול', 'ציפור', 'דג', 'גור', 'dog', 'cat', 'bird', 'fish', 'puppy', 'kitten',
+        'כלבים', 'חתולים', 'ציפורים', 'דגים', 'גורים',
+        # Pet products
+        'מזון', 'אוכל', 'צעצוע', 'חול', 'ליטר', 'רצועה', 'קולר', 'כלוב', 'אקווריום',
+        'food', 'toy', 'litter', 'collar', 'leash',
+        # Pet care
+        'טיפוח', 'רחצה', 'וטרינר', 'חיסון', 'פרעושים',
+        # Brands (strong indicators)
+        'מונג', 'פרופלאן', 'אקאנה', 'רויאל', 'ג׳וסרה', 'הריטג',
+        'monge', 'proplan', 'acana', 'royal', 'josera'
+    ]
+    
+    return any(indicator in query_lower for indicator in pet_indicators)
+
 def should_exclude_product(product_name, product_category, detected_pet):
     """
     STRICT RULE: If searching for dogs, NO cat words allowed in name/category.
     If searching for cats, NO dog words allowed in name/category.
+    Exception: If searching for "גור" (generic puppy), show both!
     """
     if not detected_pet or detected_pet not in PET_EXCLUSIONS:
+        return False
+    
+    # Special case: if searching for "גור" without specifying dog/cat, show both
+    if detected_pet == 'גור':
         return False
     
     text_to_check = f"{product_name} {product_category}".lower()
@@ -225,19 +260,23 @@ def get_llm_response(message, products, context=None):
         return "הנה כמה מוצרים שמצאתי עבורך! 🐾"
     
     try:
-        system_prompt = """אתה שופיבוט (ShopiBot) - עוזר קניות AI מקצועי של Shopipet.co.il.
+        system_prompt = """אתה שופיבוט (ShopiBot) - עוזר קניות AI של Shopipet.co.il - חנות מוצרים לחיות מחמד.
+
+חשוב מאוד:
+- זה חנות לכלבים, חתולים, ציפורים, דגים ומכרסמים - לא לבני אדם!
+- "גור" = גור כלב או חתול, לא תינוק אנושי!
 
 חוקים קריטיים:
 1. דבר רק בעברית טבעית וחמה
 2. תשובות קצרות: 1-2 משפטים בלבד (מקסימום 120 תווים)
 3. אל תפרט מוצרים - הם יוצגו בכרטיסים
 4. אל תכלול לינקים או מחירים - הם בכרטיסים
-5. היה טבעי - אל תגיד "בדקתי במאגר" או "לאחר בדיקה"
+5. היה טבעי - אל תגיד "בדקתי במאגר"
 
-דוגמאות לתשובות טובות:
-✅ "מצאתי כמה אפשרויות מעולות! תסתכל על המוצרים למטה 🐕"
-✅ "יש לי המלצות נהדרות בשבילך! 😊"
-✅ "הנה בדיוק מה שחיפשת! 🎯"
+דוגמאות טובות:
+✅ "מצאתי כמה אפשרויות מעולות לגור שלך! 🐕"
+✅ "יש לי המלצות נהדרות לחתולון! 😊"
+✅ "הנה בדיוק מה שהכלב שלך צריך! 🎯"
 
 אל תעשה:
 ❌ "בדקתי במאגר ומצאתי..."
@@ -284,6 +323,110 @@ def health_check():
         "google_sheets": "connected" if creds else "disconnected",
         "openai": "connected" if openai_client else "disconnected"
     })
+
+@app.route('/openapi.json', methods=['GET'])
+def openapi_spec():
+    """Return OpenAPI specification"""
+    try:
+        import os
+        spec_path = os.path.join(os.path.dirname(__file__), '..', 'web', 'openapi.json')
+        if os.path.exists(spec_path):
+            with open(spec_path, 'r', encoding='utf-8') as f:
+                spec = json.load(f)
+            return jsonify(spec)
+        else:
+            return jsonify({"error": "OpenAPI spec not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/openapi.json', methods=['GET'])
+def openapi_spec():
+    """Return OpenAPI specification"""
+    spec = {
+        "openapi": "3.0.0",
+        "info": {
+            "title": "ShopiBot API",
+            "version": "1.0.0",
+            "description": "API לצ'אטבוט חכם למוצרי חיות מחמד"
+        },
+        "servers": [
+            {
+                "url": "https://shopipet-chatkit.vercel.app",
+                "description": "Production server"
+            }
+        ],
+        "paths": {
+            "/api/ping": {
+                "get": {
+                    "summary": "Health check",
+                    "responses": {
+                        "200": {
+                            "description": "API is running"
+                        }
+                    }
+                }
+            },
+            "/api/chat": {
+                "post": {
+                    "summary": "Chat with ShopiBot",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "description": "שאלת המשתמש"
+                                        },
+                                        "limit": {
+                                            "type": "integer",
+                                            "default": 5,
+                                            "description": "מספר מוצרים להחזיר"
+                                        }
+                                    },
+                                    "required": ["message"]
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Successful response",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "message": {
+                                                "type": "string"
+                                            },
+                                            "items": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "id": {"type": "string"},
+                                                        "name": {"type": "string"},
+                                                        "price": {"type": "string"},
+                                                        "description": {"type": "string"},
+                                                        "image": {"type": "string"},
+                                                        "url": {"type": "string"}
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return jsonify(spec)
 
 @app.route('/api/test-sheets', methods=['GET'])
 def test_sheets():
@@ -340,6 +483,13 @@ def chat():
             })
         
         print(f"📩 Received message: {message}")
+        
+        # Check if query is pet-related
+        if not is_pet_related_query(message):
+            return jsonify({
+                "message": "אני מתמחה רק במוצרים לחיות מחמד! 🐾 מה חיית המחמד שלך צריכה?",
+                "items": []
+            })
         
         # Detect pet type from query
         detected_pet = get_pet_type_from_query(message)
@@ -466,11 +616,24 @@ def chat():
         if len(top_items) > 0:
             reply = get_llm_response(message, top_items)
         else:
+            # No products found
             if openai_client:
                 try:
-                    fallback_prompt = """אתה שופיבוט. המשתמש חיפש אבל לא נמצאו מוצרים.
-תן תשובה קצרה (1-2 משפטים) שמציעה לנסות חיפוש אחר או קטגוריות.
-היה חיובי וידידותי. אל תתנצל יותר מדי."""
+                    fallback_prompt = """אתה שופיבוט של Shopipet - חנות מוצרים לחיות מחמד בלבד.
+
+המשתמש חיפש אבל לא נמצאו מוצרים.
+
+חשוב מאוד:
+1. זה חנות לכלבים, חתולים, ציפורים, דגים ומכרסמים - לא לבני אדם!
+2. אם המשתמש שאל על "גור" - זה גור כלב או חתול, לא תינוק!
+3. תן תשובה קצרה (1-2 משפטים) שמציעה לחפש בקטגוריות של חיות מחמד
+4. היה חיובי וידידותי
+
+דוגמאות:
+- "לא מצאתי בדיוק את זה. נסה לחפש 'מזון לגורים' או 'גור כלבים'"
+- "אולי תנסה לפרט יותר? איזו חיה ואיזה סוג מוצר?"
+- "נסה לחפש לפי קטגוריה: מזון לכלבים, צעצועים לחתולים וכו׳"
+"""
                     
                     fallback_messages = [
                         {"role": "system", "content": fallback_prompt},
@@ -480,11 +643,11 @@ def chat():
                         model="gpt-4o-mini",
                         messages=fallback_messages,
                         temperature=0.7,
-                        max_tokens=80
+                        max_tokens=100
                     )
                     reply = completion.choices[0].message.content
                 except:
-                    reply = "לא מצאתי בדיוק את זה, אבל נסה לחפש במילים אחרות! 🔍"
+                    reply = "לא מצאתי בדיוק את זה. נסה לחפש 'מזון לכלבים' או 'מזון לחתולים'! 🐾"
             else:
                 reply = "לא מצאתי מוצרים מתאימים. נסה חיפוש אחר! 🔍"
         
@@ -508,15 +671,3 @@ def chat():
 
 if __name__ == '__main__':
     app.run(debug=True)
-from flask import send_from_directory
-import os
-
-from flask import send_file
-
-@app.route("/openapi.json", methods=["GET"])
-def serve_openapi_json():
-    try:
-        return send_file("../public/openapi.json", mimetype="application/json")
-    except Exception as e:
-        return jsonify({"error": str(e), "message": "openapi.json not found"}), 404
-
