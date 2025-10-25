@@ -57,47 +57,33 @@ if OPENAI_AVAILABLE and OPENAI_API_KEY:
 
 # === SYNONYMS AND SEARCH ENHANCEMENT ===
 SYNONYMS = {
-    # Pet names
     'כלב': ['כלבים', 'דוג', 'דוגי', 'כלבלב', 'puppy', 'dog', 'dogs'],
     'חתול': ['חתולים', 'קיטי', 'חתולון', 'חתלתול', 'cat', 'kitten', 'cats'],
     'גור': ['גורים', 'גור כלבים', 'גור חתולים', 'puppies', 'kittens', 'צעיר', 'צעירים', 'גורון', 'גוריה'],
     'ציפור': ['ציפורים', 'bird', 'birds'],
     'דג': ['דגים', 'fish'],
-    
-    # Product types
     'מזון': ['אוכל', 'מזונות', 'אוכלים', 'מאכל', 'food', 'אוכלן', 'buy', 'pay', 'purchase', 'acquire'],
     'יבש': ['מזון יבש', 'קיבל', 'dry', 'דראי', 'יבשים'],
     'רטוב': ['מזון רטוב', 'שימורים', 'פחית', 'wet', 'וואט', 'רטובים'],
     'חטיף': ['חטיפים', 'פינוק', 'פינוקים', 'treats', 'snacks', 'נשנושים'],
     'צעצוע': ['צעצועים', 'משחק', 'משחקים', 'toy', 'toys'],
     'חול': ['ליטר', 'חולות', 'litter', 'sand', 'box', 'housing', 'unit', 'package'],
-    
-    # Brands
     'מונג': ['מונג׳', 'monge', 'mong', 'מונז', 'מונז׳'],
     'פרופלאן': ['proplan', 'פרו פלאן', 'פרו פלן', 'pro plan', 'pro-plan'],
     'ג׳וסרה': ['גוסרה', 'josera', 'גוזרה', 'ג׳וזרה', 'josra'],
     'הריטג': ['הריטג׳', 'heritage', 'הריטז', 'הריטז׳', 'recipe'],
     'אקאנה': ['אקנה', 'acana', 'akana'],
-    
-    # Ingredients
     'סלמון': ['salmon', 'salomon', 'סלומון'],
-    
-    # Special attributes
     'סנסיטיב': ['סנסטיב', 'sensitive', 'רגיש'],
     'מטאבוליק': ['metabolic', 'מטבוליק', 'מתבוליק'],
-    
-    # Sizes
     'גדול': ['גדולים', 'לארג', 'large', 'big', 'ענק'],
     'קטן': ['קטנים', 'סמול', 'small', 'mini', 'מיני', 'זעיר'],
     'בינוני': ['בינוניים', 'medium', 'מדיום'],
-    
-    # Life stages
     'גור': ['גורים', 'צעיר', 'junior', 'puppy', 'kitten', 'צעירים'],
     'בוגר': ['בוגרים', 'adult', 'אדולט'],
     'מבוגר': ['סניור', 'זקן', 'senior', 'aged', 'מבוגרים'],
 }
 
-# CRITICAL: Exclusion rules - if searching for one pet, REJECT products with other pets
 PET_EXCLUSIONS = {
     'כלב': ['חתול', 'חתולים', 'cat', 'cats', 'kitten', 'קיטי', 'חתלתול'],
     'חתול': ['כלב', 'כלבים', 'dog', 'dogs', 'puppy', 'דוג', 'כלבלב'],
@@ -106,19 +92,14 @@ PET_EXCLUSIONS = {
 }
 
 def get_pet_type_from_query(query):
-    """Detect which pet type the user is asking about"""
     query_lower = query.lower()
-    
-    # Priority check for "גור" - it's always about pets!
     if any(word in query_lower for word in ['גור', 'גורים', 'puppy', 'puppies', 'kitten', 'kittens']):
-        # Try to detect if dog or cat puppy
         if any(word in query_lower for word in ['כלב', 'כלבים', 'dog', 'puppy', 'puppies']):
             return 'כלב'
         elif any(word in query_lower for word in ['חתול', 'חתולים', 'cat', 'kitten', 'kittens']):
             return 'חתול'
         else:
-            return 'גור'  # Generic puppy/kitten
-    
+            return 'גור'
     for pet, synonyms in SYNONYMS.items():
         if pet in ['כלב', 'חתול', 'ציפור', 'דג']:
             all_terms = [pet] + synonyms
@@ -127,101 +108,64 @@ def get_pet_type_from_query(query):
     return None
 
 def is_pet_related_query(query):
-    """Check if query is related to pets at all"""
     query_lower = query.lower()
-    
     pet_indicators = [
-        # Animals
         'כלב', 'חתול', 'ציפור', 'דג', 'גור', 'dog', 'cat', 'bird', 'fish', 'puppy', 'kitten',
         'כלבים', 'חתולים', 'ציפורים', 'דגים', 'גורים',
-        # Pet products
         'מזון', 'אוכל', 'צעצוע', 'חול', 'ליטר', 'רצועה', 'קולר', 'כלוב', 'אקווריום',
         'food', 'toy', 'litter', 'collar', 'leash',
-        # Pet care
         'טיפוח', 'רחצה', 'וטרינר', 'חיסון', 'פרעושים',
-        # Brands (strong indicators)
         'מונג', 'פרופלאן', 'אקאנה', 'רויאל', 'ג׳וסרה', 'הריטג',
         'monge', 'proplan', 'acana', 'royal', 'josera'
     ]
-    
     return any(indicator in query_lower for indicator in pet_indicators)
 
 def should_exclude_product(product_name, product_category, detected_pet):
-    """
-    STRICT RULE: If searching for dogs, NO cat words allowed in name/category.
-    If searching for cats, NO dog words allowed in name/category.
-    Exception: If searching for "גור" (generic puppy), show both!
-    """
     if not detected_pet or detected_pet not in PET_EXCLUSIONS:
         return False
-    
-    # Special case: if searching for "גור" without specifying dog/cat, show both
     if detected_pet == 'גור':
         return False
-    
     text_to_check = f"{product_name} {product_category}".lower()
     exclusion_words = PET_EXCLUSIONS[detected_pet]
-    
-    # If ANY exclusion word appears in name or category - REJECT!
     for word in exclusion_words:
         if word in text_to_check:
             print(f"⚠️ EXCLUDED: '{product_name}' contains '{word}' (searching for {detected_pet})")
             return True
-    
     return False
 
 def expand_query_with_synonyms(query):
-    """Expand query with synonyms for better matching"""
     expanded = [query.lower()]
     words = query.lower().split()
-    
     for word in words:
         for key, synonyms in SYNONYMS.items():
             if word in synonyms or word == key:
                 expanded.extend([key] + synonyms)
-    
     return list(set(expanded))
 
 def is_sku_query(query):
-    """Check if query is a SKU search"""
     clean = query.replace(' ', '').replace('מק"ט', '').replace('מקט', '')
     return len(clean) > 5 and sum(c.isdigit() for c in clean) > len(clean) * 0.7
 
 def calculate_product_score(product, query_terms, original_query):
-    """Calculate relevance score for ranking"""
     score = 0
     name = product.get('name', '').lower()
     category = product.get('category', '').lower()
     brand = product.get('brand', '').lower()
     desc = product.get('description', '').lower()
-    
-    # Exact match in name (50 points)
     if original_query.lower() in name:
         score += 50
-    
-    # Partial matches (35 points)
     name_matches = sum(1 for term in query_terms if term in name)
     score += min(name_matches * 10, 35)
-    
-    # Category match (25 points)
     cat_matches = sum(1 for term in query_terms if term in category)
     score += min(cat_matches * 8, 25)
-    
-    # Brand match (15 points)
     if any(term in brand for term in query_terms):
         score += 15
-    
-    # Description match (10 points)
     desc_matches = sum(1 for term in query_terms if term in desc)
     score += min(desc_matches * 2, 10)
-    
-    # Availability bonus (25 points)
     if product.get('in_stock', False):
         score += 25
     else:
         score += 5
-    
-    # Sale bonus (15 points)
     if product.get('sale_price'):
         score += 15
         try:
@@ -232,15 +176,12 @@ def calculate_product_score(product, query_terms, original_query):
                 score += discount_pct * 5
         except:
             pass
-    
     return score
 
 def fetch_rows():
-    """Fetch products from Google Sheet"""
     if not creds:
         print("⚠️ No credentials for Google Sheets")
         return []
-    
     try:
         service = build("sheets", "v4", credentials=creds)
         sheet = service.spreadsheets()
@@ -255,10 +196,8 @@ def fetch_rows():
         return []
 
 def get_llm_response(message, products, context=None):
-    """Get response from OpenAI with ShopiBot personality"""
     if not openai_client:
         return "הנה כמה מוצרים שמצאתי עבורך! 🐾"
-    
     try:
         system_prompt = """אתה שופיבוט (ShopiBot) - עוזר קניות AI של Shopipet.co.il - חנות מוצרים לחיות מחמד.
 
@@ -284,39 +223,33 @@ def get_llm_response(message, products, context=None):
 ❌ לכלול מחירים או לינקים
 
 תפקידך: הקדמה קצרה וידידותית בלבד."""
-
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": message}
         ]
-        
         if products and len(products) > 0:
             product_hint = f"נמצאו {len(products)} מוצרים רלוונטיים"
             messages.append({"role": "system", "content": product_hint})
-        
         completion = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
             temperature=0.8,
             max_tokens=80
         )
-        
         response = completion.choices[0].message.content if completion.choices else "הנה מה שמצאתי! 🐾"
-        
         if len(response) > 150:
             response = response[:147] + "..."
-        
         return response
-        
     except Exception as e:
         print(f"❌ OpenAI error: {e}")
         return "הנה כמה מוצרים מעולים עבורך! 🐾"
+
+# === ROUTES ===
 
 @app.route('/', methods=['GET'])
 @app.route('/api', methods=['GET'])
 @app.route('/api/ping', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
     return jsonify({
         "status": "ok",
         "message": "ShopiBot API is running ✅",
@@ -327,43 +260,19 @@ def health_check():
 @app.route('/openapi.json', methods=['GET'])
 def openapi_spec():
     """Return OpenAPI specification"""
-    try:
-        import os
-        spec_path = os.path.join(os.path.dirname(__file__), '..', 'web', 'openapi.json')
-        if os.path.exists(spec_path):
-            with open(spec_path, 'r', encoding='utf-8') as f:
-                spec = json.load(f)
-            return jsonify(spec)
-        else:
-            return jsonify({"error": "OpenAPI spec not found"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/openapi.json', methods=['GET'])
-def openapi_spec():
-    """Return OpenAPI specification"""
     spec = {
         "openapi": "3.0.0",
         "info": {
             "title": "ShopiBot API",
             "version": "1.0.0",
-            "description": "API לצ'אטבוט חכם למוצרי חיות מחמד"
+            "description": "API לצ'אטבוט חכם למוצרי חיות מחמד של Shopipet.co.il"
         },
-        "servers": [
-            {
-                "url": "https://shopipet-chatkit.vercel.app",
-                "description": "Production server"
-            }
-        ],
+        "servers": [{"url": "https://shopipet-chatkit.vercel.app"}],
         "paths": {
             "/api/ping": {
                 "get": {
                     "summary": "Health check",
-                    "responses": {
-                        "200": {
-                            "description": "API is running"
-                        }
-                    }
+                    "responses": {"200": {"description": "API is running"}}
                 }
             },
             "/api/chat": {
@@ -376,17 +285,9 @@ def openapi_spec():
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "description": "שאלת המשתמש"
-                                        },
-                                        "limit": {
-                                            "type": "integer",
-                                            "default": 5,
-                                            "description": "מספר מוצרים להחזיר"
-                                        }
-                                    },
-                                    "required": ["message"]
+                                        "message": {"type": "string"},
+                                        "limit": {"type": "integer", "default": 5}
+                                    }
                                 }
                             }
                         }
@@ -399,23 +300,8 @@ def openapi_spec():
                                     "schema": {
                                         "type": "object",
                                         "properties": {
-                                            "message": {
-                                                "type": "string"
-                                            },
-                                            "items": {
-                                                "type": "array",
-                                                "items": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "id": {"type": "string"},
-                                                        "name": {"type": "string"},
-                                                        "price": {"type": "string"},
-                                                        "description": {"type": "string"},
-                                                        "image": {"type": "string"},
-                                                        "url": {"type": "string"}
-                                                    }
-                                                }
-                                            }
+                                            "message": {"type": "string"},
+                                            "items": {"type": "array"}
                                         }
                                     }
                                 }
@@ -430,7 +316,6 @@ def openapi_spec():
 
 @app.route('/api/test-sheets', methods=['GET'])
 def test_sheets():
-    """Test Google Sheets connection"""
     try:
         rows = fetch_rows()
         sample = None
@@ -441,7 +326,6 @@ def test_sheets():
                 "מחיר_רגיל": r[7], "מחיר_מבצע": r[8], 
                 "מותג": r[10], "תמונה": r[17]
             }
-        
         return jsonify({
             "status": "ok",
             "rows_count": len(rows),
@@ -459,8 +343,6 @@ def test_sheets():
 
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])
 def chat():
-    """Handle chat requests with ShopiBot intelligence"""
-    
     if request.method == 'OPTIONS':
         return '', 200
     
@@ -471,44 +353,30 @@ def chat():
         filters = req_body.get("filters", {})
         
         if not message:
-            return jsonify({
-                "message": "במה אוכל לעזור? 😊",
-                "items": []
-            })
+            return jsonify({"message": "במה אוכל לעזור? 😊", "items": []})
         
         if len(message) > 200:
-            return jsonify({
-                "message": "השאלה ארוכה מדי. תוכל לנסח אותה בקצרה?",
-                "items": []
-            })
+            return jsonify({"message": "השאלה ארוכה מדי. תוכל לנסח אותה בקצרה?", "items": []})
         
         print(f"📩 Received message: {message}")
         
-        # Check if query is pet-related
         if not is_pet_related_query(message):
             return jsonify({
                 "message": "אני מתמחה רק במוצרים לחיות מחמד! 🐾 מה חיית המחמד שלך צריכה?",
                 "items": []
             })
         
-        # Detect pet type from query
         detected_pet = get_pet_type_from_query(message)
         if detected_pet:
             print(f"🐾 Detected pet type: {detected_pet}")
         
-        # Check if SKU search
         is_sku = is_sku_query(message)
-        
-        # Expand query with synonyms
         query_terms = expand_query_with_synonyms(message)
-        
-        # Fetch products from Google Sheet
         rows = fetch_rows()
         items = []
         
         for r in rows:
             r = (r + [""] * 18)[:18]
-            
             product_id = r[0]
             sku = r[3]
             name = r[4]
@@ -520,8 +388,6 @@ def chat():
             brand = r[10]
             product_url = r[16]
             image_url = r[17]
-            
-            # Attributes (L-P)
             attr1 = r[11] if len(r) > 11 else ""
             attr2 = r[12] if len(r) > 12 else ""
             attr3 = r[13] if len(r) > 13 else ""
@@ -531,34 +397,23 @@ def chat():
             if not name:
                 continue
             
-            # CRITICAL EXCLUSION: If searching for dogs, reject cats (and vice versa)
             if detected_pet and should_exclude_product(name, categories, detected_pet):
-                continue  # Skip this product entirely!
+                continue
             
-            # SKU exact match
             if is_sku and sku:
                 clean_sku = sku.replace(' ', '')
                 clean_query = message.replace(' ', '').replace('מק"ט', '').replace('מקט', '')
                 if clean_sku == clean_query or clean_query in clean_sku:
                     items.append({
-                        "id": product_id,
-                        "name": name,
-                        "category": categories,
+                        "id": product_id, "name": name, "category": categories,
                         "price": sale_price if sale_price else regular_price,
-                        "regular_price": regular_price,
-                        "sale_price": sale_price,
-                        "description": short_desc or description,
-                        "image": image_url,
-                        "brand": brand,
-                        "url": product_url,
-                        "sku": sku,
-                        "score": 1000,
-                        "in_stock": True,
-                        "attributes": [attr1, attr2, attr3, attr4, attr5]
+                        "regular_price": regular_price, "sale_price": sale_price,
+                        "description": short_desc or description, "image": image_url,
+                        "brand": brand, "url": product_url, "sku": sku, "score": 1000,
+                        "in_stock": True, "attributes": [attr1, attr2, attr3, attr4, attr5]
                     })
                     break
             
-            # Price filtering
             price = sale_price if sale_price else regular_price
             try:
                 price_f = float(str(price).replace(",", "").replace("₪", "").strip())
@@ -573,68 +428,40 @@ def chat():
                     if price_f < float(filters["min_price"]):
                         continue
             
-            # Text matching with expanded terms
-            hay = " ".join([
-                str(product_id), str(sku), str(name), str(short_desc),
-                str(description), str(categories), str(brand)
-            ]).lower()
-            
+            hay = " ".join([str(product_id), str(sku), str(name), str(short_desc), str(description), str(categories), str(brand)]).lower()
             matches = any(term in hay for term in query_terms)
             
             if matches or not message:
                 product = {
-                    "id": product_id,
-                    "name": name,
-                    "category": categories,
-                    "price": price,
-                    "regular_price": regular_price,
-                    "sale_price": sale_price,
-                    "description": short_desc or description,
-                    "image": image_url,
-                    "brand": brand,
-                    "url": product_url,
-                    "sku": sku,
-                    "in_stock": True,
+                    "id": product_id, "name": name, "category": categories,
+                    "price": price, "regular_price": regular_price, "sale_price": sale_price,
+                    "description": short_desc or description, "image": image_url,
+                    "brand": brand, "url": product_url, "sku": sku, "in_stock": True,
                     "attributes": [attr1, attr2, attr3, attr4, attr5]
                 }
-                
                 score = calculate_product_score(product, query_terms, message)
                 product["score"] = score
-                
                 items.append(product)
             
             if len(items) >= max(50, limit * 3):
                 break
         
-        # Sort by score
         items.sort(key=lambda x: x.get("score", 0), reverse=True)
         top_items = items[:limit]
         
         print(f"✅ Found {len(top_items)} products (from {len(items)} candidates)")
         
-        # Get LLM response
         if len(top_items) > 0:
             reply = get_llm_response(message, top_items)
         else:
-            # No products found
             if openai_client:
                 try:
                     fallback_prompt = """אתה שופיבוט של Shopipet - חנות מוצרים לחיות מחמד בלבד.
-
 המשתמש חיפש אבל לא נמצאו מוצרים.
-
-חשוב מאוד:
-1. זה חנות לכלבים, חתולים, ציפורים, דגים ומכרסמים - לא לבני אדם!
-2. אם המשתמש שאל על "גור" - זה גור כלב או חתול, לא תינוק!
-3. תן תשובה קצרה (1-2 משפטים) שמציעה לחפש בקטגוריות של חיות מחמד
-4. היה חיובי וידידותי
-
-דוגמאות:
-- "לא מצאתי בדיוק את זה. נסה לחפש 'מזון לגורים' או 'גור כלבים'"
-- "אולי תנסה לפרט יותר? איזו חיה ואיזה סוג מוצר?"
-- "נסה לחפש לפי קטגוריה: מזון לכלבים, צעצועים לחתולים וכו׳"
-"""
-                    
+חשוב מאוד: זה חנות לכלבים, חתולים, ציפורים, דגים ומכרסמים - לא לבני אדם!
+אם המשתמש שאל על "גור" - זה גור כלב או חתול, לא תינוק!
+תן תשובה קצרה (1-2 משפטים) שמציעה לחפש בקטגוריות של חיות מחמד
+היה חיובי וידידותי"""
                     fallback_messages = [
                         {"role": "system", "content": fallback_prompt},
                         {"role": "user", "content": f"חיפשתי: {message}"}
@@ -647,27 +474,19 @@ def chat():
                     )
                     reply = completion.choices[0].message.content
                 except:
-                    reply = "לא מצאתי בדיוק את זה. נסה לחפש 'מזון לכלבים' או 'מזון לחתולים'! 🐾"
+                    reply = "לא מצאתי בדיוק את זה. נסה לחפש 'מזון לגורים' או 'גור כלבים'! 🐾"
             else:
                 reply = "לא מצאתי מוצרים מתאימים. נסה חיפוש אחר! 🔍"
         
         print("✅ Response sent successfully")
         
-        return jsonify({
-            "message": reply,
-            "items": top_items
-        })
+        return jsonify({"message": reply, "items": top_items})
         
     except Exception as e:
         print(f"❌ ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
-        
-        return jsonify({
-            "message": "אופס! משהו השתבש. נסה שוב בעוד רגע 🔧",
-            "error": str(e),
-            "items": []
-        }), 500
+        return jsonify({"message": "אופס! משהו השתבש. נסה שוב בעוד רגע 🔧", "error": str(e), "items": []}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
