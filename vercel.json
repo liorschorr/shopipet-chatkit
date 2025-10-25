@@ -3,10 +3,10 @@
   "builds": [
     { "src": "api/chat.py", "use": "@vercel/python" },
     { "src": "web/embed.js", "use": "@vercel/static" },
-    { "src": "openapi.json", "use": "@vercel/static" }
+    { "src": "public/openapi.json", "use": "@vercel/static" }
   ],
   "routes": [
-    { "src": "/openapi.json", "dest": "/openapi.json" },
+    { "src": "/openapi.json", "dest": "public/openapi.json" },
     { "src": "/api/(.*)", "dest": "api/chat.py" },
     { "src": "/web/embed.js", "dest": "web/embed.js" },
     { "src": "/(.*)", "dest": "api/chat.py" }
