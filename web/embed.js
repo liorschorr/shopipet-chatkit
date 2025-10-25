@@ -39,7 +39,6 @@
     flex-direction: column;
     overflow: hidden;
     z-index: 2147483646;
-    transition: all .3s ease;
   }
 
   .shopibot-header {
@@ -98,19 +97,30 @@
     border: 1px solid #eee;
   }
 
-  .option-btn {
-    display: inline-block;
-    background: #f3e7f1;
-    color: #3b2e3a;
-    padding: 8px 14px;
-    border-radius: 20px;
-    margin: 4px 3px;
-    font-size: 14px;
+  .prod {
+    display: flex;
+    gap: 10px;
+    border: 1px solid #eee;
+    padding: 8px;
+    border-radius: 10px;
+    margin: 6px 0;
+    background: #fff;
     cursor: pointer;
-    border: none;
   }
-  .option-btn:hover {
-    background: #ebd4ea;
+  .prod img {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 8px;
+  }
+  .prod .meta {
+    font-size: 13px;
+    line-height: 1.3;
+  }
+  .prod .meta strong {
+    display: block;
+    font-size: 14px;
+    color: #333;
   }
 
   @media (max-width: 600px) {
@@ -122,16 +132,6 @@
       height: 100%;
       max-height: none;
       border-radius: 0;
-    }
-    .shopibot-bubble {
-      bottom: 20px;
-      right: 20px;
-      width: 56px;
-      height: 56px;
-    }
-    .shopibot-bubble img {
-      width: 44px;
-      height: 44px;
     }
   }
   `;
@@ -186,26 +186,29 @@
     body.scrollTop = body.scrollHeight;
   }
 
-  function addOptions(options) {
-    const container = document.createElement('div');
-    options.forEach(opt => {
-      const btn = document.createElement('button');
-      btn.className = 'option-btn';
-      btn.textContent = opt;
-      btn.onclick = () => {
-        container.remove();
-        ask(opt);
+  function addProducts(items) {
+    items.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'prod';
+      card.innerHTML = `
+        <img src="${p.image || ''}" alt="${p.name || ''}" />
+        <div class="meta">
+          <strong>${p.name || ''}</strong>
+          <div>${p.description || ''}</div>
+          <div><b>${p.price ? '₪' + p.price : ''}</b></div>
+        </div>
+      `;
+      card.onclick = () => {
+        window.open('https://dev.shopipet.co.il/?s=' + encodeURIComponent(p.name), '_blank');
       };
-      container.appendChild(btn);
+      body.appendChild(card);
     });
-    body.appendChild(container);
     body.scrollTop = body.scrollHeight;
   }
 
   function showWelcome() {
     body.innerHTML = '';
     addBot('שלום! אני שופיבוט 🐶 איך אפשר לעזור היום?');
-    addOptions(['מזון לכלב', 'חטיפים', 'ציוד טיפוח', 'צעצועים', 'מוצרים לחתול']);
   }
 
   async function ask(q) {
@@ -219,7 +222,9 @@
       });
       const data = await res.json();
       body.lastChild.remove(); // remove "מחפש בשבילך..."
-      addBot(data.message || 'הנה מה שמצאתי');
+      addBot(data.message || 'הנה מה שמצאתי:');
+      if (data.items && data.items.length) addProducts(data.items);
+      else addBot('לא מצאתי מוצרים מתאימים 😔');
     } catch {
       addBot('הייתה בעיה זמנית. נסה שוב מאוחר יותר.');
     }
@@ -234,14 +239,5 @@
 
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') send.click();
-  });
-
-  // תיקון תצוגה במקלדת מובייל
-  window.addEventListener('resize', () => {
-    if (window.innerHeight < 500) {
-      panel.style.height = '85vh';
-    } else {
-      panel.style.height = '70vh';
-    }
   });
 })();
