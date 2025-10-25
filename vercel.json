@@ -7,7 +7,7 @@
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "api/chat.py" },
-    { "src": "/openapi.json", "dest": "public/openapi.json" },
+    { "src": "/public/(.*)", "dest": "public/openapi.json" },
     { "src": "/web/(.*)", "dest": "web/$1" },
     { "src": "/(.*)", "dest": "public/$1" }
   ]
