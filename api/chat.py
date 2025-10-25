@@ -487,6 +487,75 @@ def chat():
         import traceback
         traceback.print_exc()
         return jsonify({"message": "אופס! משהו השתבש. נסה שוב בעוד רגע 🔧", "error": str(e), "items": []}), 500
+# --- OpenAPI JSON via Flask (always available) ---
+from flask import send_file
+
+@app.route('/openapi.json', methods=['GET'])
+def openapi_spec_file():
+    """
+    Serve OpenAPI schema file if it exists under /public/openapi.json.
+    Falls back to in-memory JSON below if file missing.
+    """
+    try:
+        return send_file(os.path.join(os.path.dirname(__file__), '..', 'public', 'openapi.json'),
+                         mimetype='application/json')
+    except Exception:
+        # Fallback to in-memory JSON (keeps working even without the file)
+        spec = {
+            "openapi": "3.1.0",
+            "info": {
+                "title": "ShopiBot API",
+                "version": "1.0.0",
+                "description": "API לצ'אטבוט חכם למוצרי חיות מחמד של Shopipet.co.il"
+            },
+            "servers": [{"url": "https://shopipet-chatkit.vercel.app"}],
+            "paths": {
+                "/api/ping": {"get": {"summary": "Health check", "responses": {"200": {"description": "OK"}}}},
+                "/api/chat": {
+                    "post": {
+                        "summary": "Chat with ShopiBot",
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "message": {"type": "string"},
+                                            "limit": {"type": "integer", "default": 5}
+                                        },
+                                        "required": ["message"]
+                                    }
+                                }
+                            }
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "OK",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "message": {"type": "string"},
+                                                "items": {"type": "array"}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return jsonify(spec), 200
+
+# --- Optional: make GET on /api/chat return a friendly message instead of 405 ---
+@app.route('/api/chat', methods=['GET'])
+def chat_get_info():
+    return jsonify({"status": "ok",
+                    "message": "Chat endpoint is alive. Use POST with {'message': '...'}"}), 200
 
 if __name__ == '__main__':
     app.run(debug=True)
