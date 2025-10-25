@@ -511,8 +511,12 @@ if __name__ == '__main__':
 from flask import send_from_directory
 import os
 
-@app.route("/openapi.json")
-def serve_openapi():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    public_dir = os.path.join(current_dir, "..", "public")
-    return send_from_directory(public_dir, "openapi.json")
+from flask import send_file
+
+@app.route("/openapi.json", methods=["GET"])
+def serve_openapi_json():
+    try:
+        return send_file("../public/openapi.json", mimetype="application/json")
+    except Exception as e:
+        return jsonify({"error": str(e), "message": "openapi.json not found"}), 404
+
