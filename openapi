@@ -1,0 +1,71 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ShopiBot API",
+    "version": "1.0.0",
+    "description": "API לחיפוש מוצרים והמלצות בצ'אט של Shopipet"
+  },
+  "servers": [
+    { "url": "https://shopipet-chatkit.vercel.app" }
+  ],
+  "paths": {
+    "/api/chat": {
+      "post": {
+        "summary": "Send a message to ShopiBot",
+        "operationId": "shopipet_search",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": { "type": "string" },
+                  "limit": { "type": "integer", "default": 5 }
+                },
+                "required": ["message"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "description": { "type": "string" },
+                          "price": { "type": "string" },
+                          "regular_price": { "type": "string" },
+                          "sale_price": { "type": "string" },
+                          "brand": { "type": "string" },
+                          "image": { "type": "string" },
+                          "url": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ping": {
+      "get": {
+        "summary": "Health check",
+        "responses": { "200": { "description": "OK" } }
+      }
+    }
+  }
+}
