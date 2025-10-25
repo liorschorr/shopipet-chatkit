@@ -12,15 +12,11 @@
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "api/chat.py"
-    },
-    {
       "src": "/web/embed.js",
       "dest": "web/embed.js"
     },
     {
-      "src": "/",
+      "src": "/(.*)",
       "dest": "api/chat.py"
     }
   ]
