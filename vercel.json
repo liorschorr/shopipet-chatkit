@@ -2,7 +2,8 @@
   "version": 2,
   "builds": [
     { "src": "api/chat.py", "use": "@vercel/python" },
-    { "src": "web/embed.js", "use": "@vercel/static" }
+    { "src": "web/embed.js", "use": "@vercel/static" },
+    { "src": "openapi.json", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/openapi.json", "dest": "/openapi.json" },
