@@ -1,0 +1,70 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ShopiBot Chat API",
+    "version": "1.0.0",
+    "description": "API לצ'אטבוט ShopiBot למציאת מוצרים לחיות מחמד באתר Shopipet.co.il"
+  },
+  "servers": [
+    { "url": "https://shopipet-chatkit.vercel.app" }
+  ],
+  "paths": {
+    "/api/ping": {
+      "get": {
+        "summary": "Check API health",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "summary": "Search for pet products",
+        "description": "Receive a user query and return relevant products from Google Sheets.",
+        "operationId": "shopipet_search",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": { "type": "string", "description": "User query" },
+                  "limit": { "type": "integer", "default": 5 }
+                },
+                "required": ["message"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "List of matching products",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "price": { "type": "string" },
+                          "brand": { "type": "string" },
+                          "description": { "type": "string" },
+                          "image": { "type": "string" },
+                          "url": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
