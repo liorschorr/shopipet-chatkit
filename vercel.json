@@ -1,12 +1,21 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/chat.py", "use": "@vercel/python" }
+    { "src": "api/chat.py", "use": "@vercel/python" },
+    { "src": "api/update_catalog.py", "use": "@vercel/python" }
   ],
   "routes": [
+    { "src": "/api/update-catalog", "dest": "/api/update_catalog.py" },
     { "src": "/api/(.*)", "dest": "/api/chat.py" },
     { "src": "/web/(.*)", "dest": "/api/chat.py" },
+    { "src": "/public/(.*)", "dest": "/api/chat.py" },
     { "src": "/openapi.json", "dest": "/api/chat.py" },
     { "src": "/(.*)", "dest": "/api/chat.py" }
+  ],
+  "crons": [
+    {
+      "path": "/api/update-catalog",
+      "schedule": "0 3 * * *"
+    }
   ]
 }
