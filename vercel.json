@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "_comment": "גרסה זו נועדה לנקות את זיכרון המטמון של Vercel",
   "builds": [
     { "src": "api/chat.py", "use": "@vercel/python" },
     { "src": "api/update_catalog.py", "use": "@vercel/python" }
