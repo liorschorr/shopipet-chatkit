@@ -555,7 +555,27 @@ def openapi_spec_file():
 @app.route('/api/chat', methods=['GET'])
 def chat_get_info():
     return jsonify({"status": "ok",
+
                     "message": "Chat endpoint is alive. Use POST with {'message': '...'}"}), 200
+from flask import send_from_directory
+
+@app.route('/web/<path:filename>')
+def serve_web_files(filename):
+    """Serve JS and static assets under /web"""
+    try:
+        return send_from_directory(os.path.join(app.root_path, '..', 'web'), filename)
+    except Exception as e:
+        print(f"⚠️ Missing static file: {filename} ({e})")
+        return jsonify({"error": f"File not found: {filename}"}), 404
+
+@app.route('/public/<path:filename>')
+def serve_public_files(filename):
+    """Serve static files under /public"""
+    try:
+        return send_from_directory(os.path.join(app.root_path, '..', 'public'), filename)
+    except Exception as e:
+        print(f"⚠️ Missing public file: {filename} ({e})")
+        return jsonify({"error": f"File not found: {filename}"}), 404
 
 if __name__ == '__main__':
     app.run(debug=True)
