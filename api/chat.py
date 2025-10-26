@@ -576,6 +576,17 @@ def serve_public_files(filename):
     except Exception as e:
         print(f"⚠️ Missing public file: {filename} ({e})")
         return jsonify({"error": f"File not found: {filename}"}), 404
+from flask import send_from_directory
+
+@app.route('/web/<path:filename>')
+def serve_web_files(filename):
+    path = os.path.join(app.root_path, '..', 'web')
+    return send_from_directory(path, filename)
+
+@app.route('/openapi.json')
+def serve_openapi_file():
+    path = os.path.join(app.root_path, '..', 'public')
+    return send_from_directory(path, 'openapi.json')
 
 if __name__ == '__main__':
     app.run(debug=True)
