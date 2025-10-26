@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 import json
 import os
@@ -257,63 +257,6 @@ def health_check():
         "openai": "connected" if openai_client else "disconnected"
     })
 
-@app.route('/openapi.json', methods=['GET'])
-def openapi_spec():
-    """Return OpenAPI specification"""
-    spec = {
-        "openapi": "3.0.0",
-        "info": {
-            "title": "ShopiBot API",
-            "version": "1.0.0",
-            "description": "API לצ'אטבוט חכם למוצרי חיות מחמד של Shopipet.co.il"
-        },
-        "servers": [{"url": "https://shopipet-chatkit.vercel.app"}],
-        "paths": {
-            "/api/ping": {
-                "get": {
-                    "summary": "Health check",
-                    "responses": {"200": {"description": "API is running"}}
-                }
-            },
-            "/api/chat": {
-                "post": {
-                    "summary": "Chat with ShopiBot",
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {"type": "string"},
-                                        "limit": {"type": "integer", "default": 5}
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "responses": {
-                        "200": {
-                            "description": "Successful response",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "message": {"type": "string"},
-                                            "items": {"type": "array"}
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return jsonify(spec)
-
 @app.route('/api/test-sheets', methods=['GET'])
 def test_sheets():
     try:
@@ -487,78 +430,19 @@ def chat():
         import traceback
         traceback.print_exc()
         return jsonify({"message": "אופס! משהו השתבש. נסה שוב בעוד רגע 🔧", "error": str(e), "items": []}), 500
-# --- OpenAPI JSON via Flask (always available) ---
-from flask import send_file
-
-@app.route('/openapi.json', methods=['GET'])
-def openapi_spec_file():
-    """
-    Serve OpenAPI schema file if it exists under /public/openapi.json.
-    Falls back to in-memory JSON below if file missing.
-    """
-    try:
-        return send_file(os.path.join(os.path.dirname(__file__), '..', 'public', 'openapi.json'),
-                         mimetype='application/json')
-    except Exception:
-        # Fallback to in-memory JSON (keeps working even without the file)
-        spec = {
-            "openapi": "3.1.0",
-            "info": {
-                "title": "ShopiBot API",
-                "version": "1.0.0",
-                "description": "API לצ'אטבוט חכם למוצרי חיות מחמד של Shopipet.co.il"
-            },
-            "servers": [{"url": "https://shopipet-chatkit.vercel.app"}],
-            "paths": {
-                "/api/ping": {"get": {"summary": "Health check", "responses": {"200": {"description": "OK"}}}},
-                "/api/chat": {
-                    "post": {
-                        "summary": "Chat with ShopiBot",
-                        "requestBody": {
-                            "required": True,
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "message": {"type": "string"},
-                                            "limit": {"type": "integer", "default": 5}
-                                        },
-                                        "required": ["message"]
-                                    }
-                                }
-                            }
-                        },
-                        "responses": {
-                            "200": {
-                                "description": "OK",
-                                "content": {
-                                    "application/json": {
-                                        "schema": {
-                                            "type": "object",
-                                            "properties": {
-                                                "message": {"type": "string"},
-                                                "items": {"type": "array"}
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return jsonify(spec), 200
 
 # --- Optional: make GET on /api/chat return a friendly message instead of 405 ---
 @app.route('/api/chat', methods=['GET'])
 def chat_get_info():
     return jsonify({"status": "ok",
-
                     "message": "Chat endpoint is alive. Use POST with {'message': '...'}"}), 200
-from flask import send_from_directory
 
+# --- Static File Serving ---
+#
+# פונקציות להגשת קבצים סטטיים מהתיקיות
+# 'web' (עבור ה-embed.js)
+# 'public' (עבור openapi.json)
+#
 @app.route('/web/<path:filename>')
 def serve_web_files(filename):
     """Serve JS and static assets under /web"""
@@ -576,15 +460,10 @@ def serve_public_files(filename):
     except Exception as e:
         print(f"⚠️ Missing public file: {filename} ({e})")
         return jsonify({"error": f"File not found: {filename}"}), 404
-from flask import send_from_directory
-
-@app.route('/web/<path:filename>')
-def serve_web_files(filename):
-    path = os.path.join(app.root_path, '..', 'web')
-    return send_from_directory(path, filename)
 
 @app.route('/openapi.json')
 def serve_openapi_file():
+    """Serves the openapi.json file from the /public directory"""
     path = os.path.join(app.root_path, '..', 'public')
     return send_from_directory(path, 'openapi.json')
 
