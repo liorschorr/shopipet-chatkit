@@ -46,10 +46,12 @@ def update_catalog():
         
         print(f"✅ Environment variables loaded. Target Sheet ID: {SHEET_ID}, Sheet Name: '{SHEET_NAME}'")
 
-        # --- 3. הגדרת הרשאות ---
+        # --- 3. הגדרת הרשאות (זה התיקון המרכזי) ---
         print("Authenticating with Google...")
         SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        # קורא את ההגדרות מהטקסט שהעתקת (משתנה סביבה)
         creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+        # משתמש ב-from_service_account_info במקום from_service_account_file
         CREDS = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         print("✅ Google Credentials loaded.")
 
