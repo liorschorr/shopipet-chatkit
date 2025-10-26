@@ -6,4 +6,3 @@ openai==1.12.0
 httpx==0.27.0
 numpy==1.26.4
 gspread==5.12.4
-google-oauth2-service-account==1.4.0
