@@ -3,6 +3,8 @@ from flask_cors import CORS
 import json
 import os
 import re
+import numpy as np
+from numpy.linalg import norm
 
 # Import Google Sheets
 try:
@@ -30,10 +32,12 @@ SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1-XfEIXT0ovbhkWnBezc4v2xIcmUd
 SHEET_RANGE = os.environ.get("SHEET_RANGE", "Sheet1!A2:R")
 GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+CATALOG_PATH = "/tmp/catalog.json"
 
 # Initialize clients
 creds = None
 openai_client = None
+product_catalog_embeddings = [] # יכיל את הקטלוג החכם
 
 # Initialize Google Sheets
 if GOOGLE_AVAILABLE and GOOGLE_CREDENTIALS:
@@ -55,7 +59,83 @@ if OPENAI_AVAILABLE and OPENAI_API_KEY:
     except Exception as e:
         print(f"❌ OpenAI error: {e}")
 
-# === SYNONYMS AND SEARCH ENHANCEMENT ===
+# === Load Smart Catalog ===
+def load_smart_catalog():
+    """טוען את קטלוג ה-Embeddings מהקובץ הזמני"""
+    global product_catalog_embeddings
+    try:
+        if os.path.exists(CATALOG_PATH):
+            with open(CATALOG_PATH, "r", encoding="utf8") as f:
+                data = json.load(f)
+            
+            # ודא שהנתונים תקינים והופך Embeddings לרשימות Numpy
+            product_catalog_embeddings = []
+            for item in data:
+                if "meta" in item and "embedding" in item:
+                    item["embedding_np"] = np.array(item["embedding"])
+                    product_catalog_embeddings.append(item)
+                    
+            if product_catalog_embeddings:
+                print(f"✅ Smart Catalog loaded successfully with {len(product_catalog_embeddings)} items.")
+                return True
+    except Exception as e:
+        print(f"❌ Error loading Smart Catalog: {e}")
+    
+    print("⚠️ Smart Catalog not found or empty. Falling back to text search.")
+    product_catalog_embeddings = []
+    return False
+
+# טעינה ראשונית בעת עליית השרת
+load_smart_catalog()
+
+
+# === New Smart Search ===
+def get_embedding(text, model="text-embedding-3-small"):
+   text = text.replace("\n", " ")
+   return openai_client.embeddings.create(input = [text], model=model).data[0].embedding
+
+def find_products_by_embedding(query, limit=5):
+    """מחפש מוצרים באמצעות השוואת Embeddings (חיפוש חכם)"""
+    if not openai_client:
+        raise Exception("OpenAI client not available")
+    if not product_catalog_embeddings:
+        raise Exception("Smart Catalog not loaded")
+
+    query_embedding = np.array(get_embedding(query))
+    
+    # Calculate cosine similarity
+    results = []
+    for item in product_catalog_embeddings:
+        sim = np.dot(query_embedding, item["embedding_np"]) / (norm(query_embedding) * norm(item["embedding_np"]))
+        results.append({"product": item["meta"], "score": sim})
+    
+    # Sort by highest score
+    results.sort(key=lambda x: x["score"], reverse=True)
+    
+    # Format for output
+    top_products = []
+    for res in results[:limit]:
+        p = res["product"]
+        top_products.append({
+            "id": p.get("מזהה ייחודי"),
+            "name": p.get("שם מוצר"),
+            "category": p.get("קטגוריה"),
+            "price": p.get("מחיר מבצע") if p.get("מחיר מבצע") else p.get("מחיר רגיל"),
+            "regular_price": p.get("מחיר רגיל"),
+            "sale_price": p.get("מחיר מבצע"),
+            "description": p.get("תיאור קצר") or p.get("תיאור"),
+            "image": p.get("כתובת תמונה"),
+            "brand": p.get("מותג"),
+            "url": p.get("קישור"),
+            "sku": p.get("מק\"ט"),
+            "score": res["score"],
+            "in_stock": True # הנחה שהכל במלאי, ניתן לשפר
+        })
+    return top_products
+
+
+# === SYNONYMS AND SEARCH ENHANCEMENT (Fallback) ===
+# קוד החיפוש ה"טיפש" נשאר כאן לשם גיבוי
 SYNONYMS = {
     'כלב': ['כלבים', 'דוג', 'דוגי', 'כלבלב', 'puppy', 'dog', 'dogs'],
     'חתול': ['חתולים', 'קיטי', 'חתולון', 'חתלתול', 'cat', 'kitten', 'cats'],
@@ -187,13 +267,96 @@ def fetch_rows():
         sheet = service.spreadsheets()
         result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=SHEET_RANGE).execute()
         rows = result.get("values", [])
-        print(f"✅ Fetched {len(rows)} rows from Google Sheets")
+        print(f"✅ Fetched {len(rows)} rows from Google Sheets (Fallback)")
         return rows
     except Exception as e:
         print(f"❌ Error fetching rows: {e}")
         import traceback
         traceback.print_exc()
         return []
+
+def find_products_by_text_fallback(message, limit=5, filters={}):
+    """מבצע חיפוש טקסטואלי פשוט כגיבוי (החיפוש ה"טיפש")"""
+    print("⚡️ Running Text-Based Fallback Search")
+    detected_pet = get_pet_type_from_query(message)
+    is_sku = is_sku_query(message)
+    query_terms = expand_query_with_synonyms(message)
+    rows = fetch_rows()
+    items = []
+    
+    for r in rows:
+        r = (r + [""] * 18)[:18]
+        product_id = r[0]
+        sku = r[3]
+        name = r[4]
+        short_desc = r[5]
+        description = r[6]
+        regular_price = r[7]
+        sale_price = r[8]
+        categories = r[9]
+        brand = r[10]
+        product_url = r[16]
+        image_url = r[17]
+        attr1 = r[11] if len(r) > 11 else ""
+        attr2 = r[12] if len(r) > 12 else ""
+        attr3 = r[13] if len(r) > 13 else ""
+        attr4 = r[14] if len(r) > 14 else ""
+        attr5 = r[15] if len(r) > 15 else ""
+        
+        if not name:
+            continue
+        
+        if detected_pet and should_exclude_product(name, categories, detected_pet):
+            continue
+        
+        if is_sku and sku:
+            clean_sku = sku.replace(' ', '')
+            clean_query = message.replace(' ', '').replace('מק"ט', '').replace('מקט', '')
+            if clean_sku == clean_query or clean_query in clean_sku:
+                items.append({
+                    "id": product_id, "name": name, "category": categories,
+                    "price": sale_price if sale_price else regular_price,
+                    "regular_price": regular_price, "sale_price": sale_price,
+                    "description": short_desc or description, "image": image_url,
+                    "brand": brand, "url": product_url, "sku": sku, "score": 1000,
+                    "in_stock": True, "attributes": [attr1, attr2, attr3, attr4, attr5]
+                })
+                break
+        
+        price = sale_price if sale_price else regular_price
+        try:
+            price_f = float(str(price).replace(",", "").replace("₪", "").strip())
+        except:
+            price_f = None
+        
+        if filters:
+            if "max_price" in filters and filters["max_price"] and price_f:
+                if price_f > float(filters["max_price"]):
+                    continue
+            if "min_price" in filters and filters["min_price"] and price_f:
+                if price_f < float(filters["min_price"]):
+                    continue
+        
+        hay = " ".join([str(product_id), str(sku), str(name), str(short_desc), str(description), str(categories), str(brand)]).lower()
+        matches = any(term in hay for term in query_terms)
+        
+        if matches or not message:
+            product = {
+                "id": product_id, "name": name, "category": categories,
+                "price": price, "regular_price": regular_price, "sale_price": sale_price,
+                "description": short_desc or description, "image": image_url,
+                "brand": brand, "url": product_url, "sku": sku, "in_stock": True,
+                "attributes": [attr1, attr2, attr3, attr4, attr5]
+            }
+            score = calculate_product_score(product, query_terms, message)
+            product["score"] = score
+            items.append(product)
+        
+        if len(items) >= max(50, limit * 3):
+            break
+    
+    items.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return items[:limit]
 
 def get_llm_response(message, products, context=None):
     if not openai_client:
@@ -250,11 +413,16 @@ def get_llm_response(message, products, context=None):
 @app.route('/api', methods=['GET'])
 @app.route('/api/ping', methods=['GET'])
 def health_check():
+    # בודק מחדש אם הקטלוג נטען, למקרה שה-Cron רץ
+    if not product_catalog_embeddings:
+        load_smart_catalog()
+        
     return jsonify({
         "status": "ok",
         "message": "ShopiBot API is running ✅",
         "google_sheets": "connected" if creds else "disconnected",
-        "openai": "connected" if openai_client else "disconnected"
+        "openai": "connected" if openai_client else "disconnected",
+        "smart_catalog_items": len(product_catalog_embeddings)
     })
 
 @app.route('/api/test-sheets', methods=['GET'])
@@ -309,90 +477,26 @@ def chat():
                 "items": []
             })
         
-        detected_pet = get_pet_type_from_query(message)
-        if detected_pet:
-            print(f"🐾 Detected pet type: {detected_pet}")
+        top_items = []
+        search_mode = "smart"
         
-        is_sku = is_sku_query(message)
-        query_terms = expand_query_with_synonyms(message)
-        rows = fetch_rows()
-        items = []
+        try:
+            # נסיון 1: חיפוש חכם
+            if not product_catalog_embeddings:
+                load_smart_catalog() # נסיון טעינה נוסף
+            
+            top_items = find_products_by_embedding(message, limit)
+            print(f"✅ Smart Search found {len(top_items)} products.")
+
+        except Exception as e:
+            # גיבוי: חיפוש טקסטואלי
+            print(f"⚠️ Smart Search failed ({e}). Falling back to text search.")
+            search_mode = "fallback_text"
+            top_items = find_products_by_text_fallback(message, limit, filters)
+            print(f"✅ Text Fallback Search found {len(top_items)} products.")
+
         
-        for r in rows:
-            r = (r + [""] * 18)[:18]
-            product_id = r[0]
-            sku = r[3]
-            name = r[4]
-            short_desc = r[5]
-            description = r[6]
-            regular_price = r[7]
-            sale_price = r[8]
-            categories = r[9]
-            brand = r[10]
-            product_url = r[16]
-            image_url = r[17]
-            attr1 = r[11] if len(r) > 11 else ""
-            attr2 = r[12] if len(r) > 12 else ""
-            attr3 = r[13] if len(r) > 13 else ""
-            attr4 = r[14] if len(r) > 14 else ""
-            attr5 = r[15] if len(r) > 15 else ""
-            
-            if not name:
-                continue
-            
-            if detected_pet and should_exclude_product(name, categories, detected_pet):
-                continue
-            
-            if is_sku and sku:
-                clean_sku = sku.replace(' ', '')
-                clean_query = message.replace(' ', '').replace('מק"ט', '').replace('מקט', '')
-                if clean_sku == clean_query or clean_query in clean_sku:
-                    items.append({
-                        "id": product_id, "name": name, "category": categories,
-                        "price": sale_price if sale_price else regular_price,
-                        "regular_price": regular_price, "sale_price": sale_price,
-                        "description": short_desc or description, "image": image_url,
-                        "brand": brand, "url": product_url, "sku": sku, "score": 1000,
-                        "in_stock": True, "attributes": [attr1, attr2, attr3, attr4, attr5]
-                    })
-                    break
-            
-            price = sale_price if sale_price else regular_price
-            try:
-                price_f = float(str(price).replace(",", "").replace("₪", "").strip())
-            except:
-                price_f = None
-            
-            if filters:
-                if "max_price" in filters and filters["max_price"] and price_f:
-                    if price_f > float(filters["max_price"]):
-                        continue
-                if "min_price" in filters and filters["min_price"] and price_f:
-                    if price_f < float(filters["min_price"]):
-                        continue
-            
-            hay = " ".join([str(product_id), str(sku), str(name), str(short_desc), str(description), str(categories), str(brand)]).lower()
-            matches = any(term in hay for term in query_terms)
-            
-            if matches or not message:
-                product = {
-                    "id": product_id, "name": name, "category": categories,
-                    "price": price, "regular_price": regular_price, "sale_price": sale_price,
-                    "description": short_desc or description, "image": image_url,
-                    "brand": brand, "url": product_url, "sku": sku, "in_stock": True,
-                    "attributes": [attr1, attr2, attr3, attr4, attr5]
-                }
-                score = calculate_product_score(product, query_terms, message)
-                product["score"] = score
-                items.append(product)
-            
-            if len(items) >= max(50, limit * 3):
-                break
-        
-        items.sort(key=lambda x: x.get("score", 0), reverse=True)
-        top_items = items[:limit]
-        
-        print(f"✅ Found {len(top_items)} products (from {len(items)} candidates)")
+        print(f"✅ Found {len(top_items)} products (from {len(top_items)} candidates) using {search_mode} search.")
         
         if len(top_items) > 0:
             reply = get_llm_response(message, top_items)
@@ -438,11 +542,6 @@ def chat_get_info():
                     "message": "Chat endpoint is alive. Use POST with {'message': '...'}"}), 200
 
 # --- Static File Serving ---
-#
-# פונקציות להגשת קבצים סטטיים מהתיקיות
-# 'web' (עבור ה-embed.js)
-# 'public' (עבור openapi.json)
-#
 @app.route('/web/<path:filename>')
 def serve_web_files(filename):
     """Serve JS and static assets under /web"""
@@ -468,4 +567,7 @@ def serve_openapi_file():
     return send_from_directory(path, 'openapi.json')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # מאפשר הרצה מקומית לצורך בדיקות
+    print("Starting Flask server for local development...")
+    load_smart_catalog() # נסיון לטעון קטלוג מקומי אם קיים
+    app.run(debug=True, port=8000)
