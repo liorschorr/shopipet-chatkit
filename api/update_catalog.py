@@ -11,10 +11,6 @@ import traceback
 app = Flask(__name__)
 
 def get_required_env(var_name):
-    """
-    טוען משתנה סביבה הכרחי.
-    זורק שגיאת ValueError אם הוא חסר, כדי שנוכל לתפוס אותה.
-    """
     value = os.environ.get(var_name)
     if not value:
         print(f"❌ FATAL ERROR: Environment variable {var_name} is not set.")
@@ -26,18 +22,15 @@ def get_required_env(var_name):
 def update_catalog():
     
     # --- 1. אתחול בתוך הפונקציה ---
-    # אנחנו מבצעים את כל האתחול כאן, בתוך בלוק try...except
-    # כדי שנוכל להחזיר שגיאת JSON ברורה במקום לקרוס.
     try:
         print("Initializing update_catalog function...")
         
-        # --- 1. טעינת משתני סביבה ובדיקתם ---
+        # --- טעינת משתני סביבה (השמות מגיעים מה-Vercel Settings) ---
         GOOGLE_CREDENTIALS_JSON = get_required_env("GOOGLE_CREDENTIALS")
         OPENAI_API_KEY = get_required_env("OPENAI_API_KEY")
         SHEET_ID = get_required_env("SPREADSHEET_ID")
-        SHEET_RANGE = get_required_env("SHEET_RANGE") # למשל: "Products!A2:R"
+        SHEET_RANGE = get_required_env("SHEET_RANGE") 
         
-        # --- 2. חילוץ שם הגיליון מתוך ה-RANGE ---
         if '!' not in SHEET_RANGE:
             raise ValueError(f"Fatal Error: SHEET_RANGE must be in 'SheetName!A1:Z' format. Got: {SHEET_RANGE}")
             
@@ -46,23 +39,19 @@ def update_catalog():
         
         print(f"✅ Environment variables loaded. Target Sheet ID: {SHEET_ID}, Sheet Name: '{SHEET_NAME}'")
 
-        # --- 3. הגדרת הרשאות (זה התיקון המרכזי) ---
+        # --- 2. הגדרת הרשאות ---
         print("Authenticating with Google...")
         SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-        # קורא את ההגדרות מהטקסט שהעתקת (משתנה סביבה)
         creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
-        # משתמש ב-from_service_account_info במקום from_service_account_file
         CREDS = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         print("✅ Google Credentials loaded.")
 
-        # --- 4. אתחול לקוחות (Clients) ---
+        # --- 3. אתחול לקוחות ---
         client_gs = gspread.authorize(CREDS)
         client_openai = OpenAI(api_key=OPENAI_API_KEY)
         print("✅ Google Sheets and OpenAI clients initialized.")
 
     except Exception as init_error:
-        # --- זה הקטע החשוב ---
-        # במקום לקרוס, אנחנו מחזירים את השגיאה בדפדפן
         print(f"❌ CRITICAL INIT FAILED: {str(init_error)}")
         return jsonify({
             "status": "error",
@@ -71,7 +60,7 @@ def update_catalog():
             "traceback": traceback.format_exc()
         }), 500
 
-    # --- 5. לוגיקה ראשית (רק אם האתחול הצליח) ---
+    # --- 4. לוגיקה ראשית (יצירת הקטלוג) ---
     try:
         print(f"Attempting to open Google Sheet: '{SHEET_NAME}'...")
         sheet = client_gs.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
@@ -85,7 +74,6 @@ def update_catalog():
         
         products = []
         
-        # --- 6. יצירת Embeddings ---
         for i, r in enumerate(records):
             product_name = r.get('שם מוצר', '')
             description = r.get('תיאור', '')
@@ -108,7 +96,7 @@ def update_catalog():
 
         print(f"✅ Generated {len(products)} embeddings.")
         
-        # --- 7. שמירת הקטלוג החכם ---
+        # --- 5. שמירת הקטלוג ב-/tmp ---
         with open(OUTPUT_PATH, "w", encoding="utf8") as f:
             json.dump(products, f, ensure_ascii=False, indent=2)
 
@@ -123,7 +111,6 @@ def update_catalog():
         })
         
     except Exception as runtime_error:
-        # תופס שגיאות בזמן הריצה של הלוגיקה
         print(f"❌ ERROR in update_catalog runtime: {str(runtime_error)}")
         return jsonify({
             "status": "error",
