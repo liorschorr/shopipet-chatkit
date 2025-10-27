@@ -5,7 +5,6 @@
     { "src": "api/update_catalog.py", "use": "@vercel/python" }
   ],
   "routes": [
-    { "src": "/force-recache", "dest": "/api/chat.py" },
     { "src": "/api/update-catalog", "dest": "/api/update_catalog.py" },
     { "src": "/api/(.*)", "dest": "/api/chat.py" },
     { "src": "/web/(.*)", "dest": "/api/chat.py" },
