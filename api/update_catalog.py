@@ -7,23 +7,27 @@ import redis
 import traceback
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import threading # *** חדש: לריצה ברקע ***
+import threading
 import urllib.parse
 import time
 
 app = Flask(__name__)
 
 # === Configuration & Initialization (Global Scope) ===
+# --- משתני סביבה ---
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
 SHEET_RANGE = os.environ.get("SHEET_RANGE")
 GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+# *** שימוש בשם שהמערכת יצרה ***
 KV_URL = os.environ.get("shopipetbot_REDIS_URL") 
 
+# Initialization Variables
 creds = None
 redis_client = None
 
-# ... (Initialization logic for Google and Redis remains the same) ...
+# --- 1. Initialize Google Sheets Credentials ---
 if GOOGLE_CREDENTIALS:
     try:
         service_account_info = json.loads(GOOGLE_CREDENTIALS)
@@ -35,13 +39,17 @@ if GOOGLE_CREDENTIALS:
     except Exception as e:
         print(f"❌ Google credentials error during initialization: {e}")
 
+# --- 2. Initialize Redis Client ---
+REDIS_INIT_ERROR = None
 if KV_URL:
     try:
+        # יוצר אובייקט Redis על בסיס מחרוזת החיבור שהועברה
         redis_client = redis.Redis.from_url(KV_URL, decode_responses=True)
         redis_client.ping() 
         print("✅ Redis client initialized successfully.")
     except Exception as e:
         print(f"❌ Redis initialization failed: {e}")
+        REDIS_INIT_ERROR = str(e)
         redis_client = None
 
 # === פונקציית העבודה הארוכה (Long-Running Task) ===
@@ -96,11 +104,15 @@ def run_embedding_job():
 @app.route("/api/update-catalog/")
 def update_catalog():
     
-    # בדיקה אם האתחול הבסיסי נכשל
+    # אם ה-Redis נכשל באתחול, אנחנו מחזירים את השגיאה המדויקת שלו
+    if REDIS_INIT_ERROR:
+        return jsonify({"status": "error", "message": f"Redis connection failed during startup. Error: {REDIS_INIT_ERROR}", "Debug": "Check KV_URL/shopipetbot_REDIS_URL value for correct password/host."}), 500
+        
+    # אם שאר ההגדרות חסרות
     if not creds or not redis_client or not OPENAI_API_KEY:
         return jsonify({"status": "error", "message": "Critical initialization failed. Check environment variables in Vercel settings.", "KV_URL_Status": "Connected" if redis_client else "Missing"}), 500
         
-    # הפעלת המשימה בחוט נפרד (רק אם המשתנים תקינים)
+    # הפעלת המשימה בחוט נפרד (כדי למנוע Timeout)
     thread = threading.Thread(target=run_embedding_job)
     thread.start()
 
@@ -112,5 +124,3 @@ def update_catalog():
     }), 202)
     
     return response
-
-# ... (אם תרצה, הוסף את השורות של if __name__ == '__main__': כדי לאפשר הרצה מקומית, אבל הוא לא חיוני לפריסה ב-Vercel)
