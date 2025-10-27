@@ -5,11 +5,16 @@ import os
 import re
 import numpy as np
 from numpy.linalg import norm
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+from openai import OpenAI
+import traceback
+import sys
+
+# --- 1. הגדרות ואתחול ---
 
 # Import Google Sheets
 try:
-    from googleapiclient.discovery import build
-    from google.oauth2 import service_account
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
@@ -17,7 +22,6 @@ except ImportError:
 
 # Import OpenAI
 try:
-    from openai import OpenAI
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -59,7 +63,7 @@ if OPENAI_AVAILABLE and OPENAI_API_KEY:
     except Exception as e:
         print(f"❌ OpenAI error: {e}")
 
-# === Load Smart Catalog ===
+# --- 2. לוגיקת החיפוש החכם והגיבוי ---
 def load_smart_catalog():
     """טוען את קטלוג ה-Embeddings מהקובץ הזמני"""
     global product_catalog_embeddings
@@ -89,7 +93,7 @@ def load_smart_catalog():
 load_smart_catalog()
 
 
-# === New Smart Search ===
+# --- 3. חיפוש חכם (Embedded Search) ---
 def get_embedding(text, model="text-embedding-3-small"):
    text = text.replace("\n", " ")
    return openai_client.embeddings.create(input = [text], model=model).data[0].embedding
@@ -133,9 +137,7 @@ def find_products_by_embedding(query, limit=5):
         })
     return top_products
 
-
-# === SYNONYMS AND SEARCH ENHANCEMENT (Fallback) ===
-# קוד החיפוש ה"טיפש" נשאר כאן לשם גיבוי
+# --- 4. לוגיקת חיפוש הגיבוי הטקסטואלי (ה"טיפש") ---
 SYNONYMS = {
     'כלב': ['כלבים', 'דוג', 'דוגי', 'כלבלב', 'puppy', 'dog', 'dogs'],
     'חתול': ['חתולים', 'קיטי', 'חתולון', 'חתלתול', 'cat', 'kitten', 'cats'],
@@ -159,7 +161,6 @@ SYNONYMS = {
     'גדול': ['גדולים', 'לארג', 'large', 'big', 'ענק'],
     'קטן': ['קטנים', 'סמול', 'small', 'mini', 'מיני', 'זעיר'],
     'בינוני': ['בינוניים', 'medium', 'מדיום'],
-    'גור': ['גורים', 'צעיר', 'junior', 'puppy', 'kitten', 'צעירים'],
     'בוגר': ['בוגרים', 'adult', 'אדולט'],
     'מבוגר': ['סניור', 'זקן', 'senior', 'aged', 'מבוגרים'],
 }
@@ -407,7 +408,7 @@ def get_llm_response(message, products, context=None):
         print(f"❌ OpenAI error: {e}")
         return "הנה כמה מוצרים מעולים עבורך! 🐾"
 
-# === ROUTES ===
+# === 5. ROUTES ===
 
 @app.route('/', methods=['GET'])
 @app.route('/api', methods=['GET'])
@@ -547,8 +548,7 @@ def serve_web_files(filename):
     """Serve JS and static assets under /web"""
     try:
         return send_from_directory(os.path.join(app.root_path, '..', 'web'), filename)
-    except Exception as e:
-        print(f"⚠️ Missing static file: {filename} ({e})")
+    except:
         return jsonify({"error": f"File not found: {filename}"}), 404
 
 @app.route('/public/<path:filename>')
@@ -556,8 +556,7 @@ def serve_public_files(filename):
     """Serve static files under /public"""
     try:
         return send_from_directory(os.path.join(app.root_path, '..', 'public'), filename)
-    except Exception as e:
-        print(f"⚠️ Missing public file: {filename} ({e})")
+    except:
         return jsonify({"error": f"File not found: {filename}"}), 404
 
 @app.route('/openapi.json')
