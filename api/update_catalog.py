@@ -15,14 +15,14 @@ app = Flask(__name__)
 
 # === Configuration & Initialization (Global Scope) ===
 
-# Sheets Config (using environment variables)
+# --- משתני סביבה (מתעדכנים לשם שהמערכת יצרה) ---
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
 SHEET_RANGE = os.environ.get("SHEET_RANGE")
 GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# Redis/KV Config
-KV_URL = os.environ.get("KV_URL")
+# *** התיקון: שימוש בשם שהמערכת יצרה: shopipetbot_REDIS_URL ***
+KV_URL = os.environ.get("shopipetbot_REDIS_URL") 
 
 # Initialization Variables
 creds = None
@@ -43,23 +43,14 @@ if GOOGLE_CREDENTIALS:
 # --- 2. Initialize Redis Client ---
 if KV_URL:
     try:
-        # פתרון לחיבור ל-Redis/Vercel KV באמצעות URL
-        url = urllib.parse.urlparse(KV_URL)
-        redis_client = redis.Redis(
-            host=url.hostname,
-            port=url.port,
-            password=url.password,
-            username=url.username,
-            ssl=True,
-            db=0
-        )
+        # יוצר אובייקט Redis על בסיס מחרוזת החיבור שהועברה
+        redis_client = redis.Redis.from_url(KV_URL, decode_responses=True)
         redis_client.ping() 
         print("✅ Redis client initialized successfully.")
     except Exception as e:
         print(f"❌ Redis initialization failed: {e}")
         redis_client = None
 
-# === Main Update Route ===
 
 @app.route("/api/update-catalog")
 @app.route("/api/update-catalog/")
@@ -67,17 +58,16 @@ def update_catalog():
     
     # --- בדיקות קריטיות לפני התחלה ---
     if not creds or not SPREADSHEET_ID or not SHEET_RANGE or not OPENAI_API_KEY:
-         return jsonify({"status": "error", "message": "Missing Google Sheets/OpenAI configuration (Check all env vars).", "KV_URL_Status": "Connected" if redis_client else "Missing"}), 500
+         return jsonify({"status": "error", "message": "Missing Google Sheets/OpenAI configuration (Check all env vars).", "Redis_Status": "Connected" if redis_client else "Missing"}), 500
     if not redis_client:
         return jsonify({"status": "error", "message": "Missing or invalid Redis (KV_URL) configuration."}), 500
         
-    # --- חילוץ שם הגיליון (התיקון) ---
+    # --- חילוץ שם הגיליון (עם תיקון ה-.strip() לרווחים) ---
     try:
-        # בדיקת פורמט (למשל: Products!A2:R)
         if '!' not in SHEET_RANGE:
             raise ValueError(f"SHEET_RANGE must be in 'SheetName!A1:Z' format. Got: {SHEET_RANGE}")
             
-        # התיקון הקריטי: חילוץ שם הגיליון וניקוי רווחים (.strip())
+        # חילוץ שם הגיליון וניקוי רווחים
         SHEET_NAME = SHEET_RANGE.split('!')[0].strip() 
         
     except Exception as e:
@@ -87,13 +77,11 @@ def update_catalog():
     try:
         print(f"Fetching data from Sheet Name: '{SHEET_NAME}'...")
         client_gs = gspread.authorize(creds)
-        # הפקודה שמחפשת את הגיליון בשם הנקי
         sheet = client_gs.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME) 
         records = sheet.get_all_records()
         print(f"✅ Fetched {len(records)} records.")
     except Exception as e:
         traceback.print_exc()
-        # אם השגיאה חוזרת, היא תהיה מפורטת יותר
         return jsonify({"status": "error", "message": f"Failed to fetch data from Google Sheets: {e}. Check sheet name and permissions."}), 500
 
     # 2. OpenAI Embedding Generation
