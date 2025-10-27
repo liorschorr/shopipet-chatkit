@@ -3,141 +3,105 @@ from openai import OpenAI
 import gspread
 import json
 import os
+import redis
+import traceback
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import sys
-import traceback
-from redis import Redis # חדש: יבוא Redis
-import urllib.parse # חדש: לטיפול ב-URL
 
 app = Flask(__name__)
 
-def get_required_env(var_name):
-    value = os.environ.get(var_name)
-    if not value:
-        print(f"❌ FATAL ERROR: Environment variable {var_name} is not set.")
-        raise ValueError(f"Fatal Error: Environment variable {var_name} is not set.")
-    return value
+# === Configuration & Initialization (Must be outside the function) ===
+
+# Sheets Config (using environment variables)
+# אם אתה משתמש ב-SHEET_NAME שאינו 'Sheet1', עדכן כאן
+SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
+SHEET_NAME = os.environ.get("SHEET_NAME", "Sheet1") 
+GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS")
+
+# Redis/KV Config
+KV_URL = os.environ.get("KV_URL")
+
+# Initialize Google Sheets Credentials
+creds = None
+if GOOGLE_CREDENTIALS:
+    try:
+        service_account_info = json.loads(GOOGLE_CREDENTIALS)
+        creds = Credentials.from_service_account_info(
+            service_account_info,
+            scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        )
+        print("✅ Google Sheets credentials loaded.")
+    except Exception as e:
+        print(f"❌ Google credentials error during initialization: {e}")
+
+# Initialize Redis Client
+redis_client = None
+if KV_URL:
+    try:
+        # יוצר אובייקט Redis על בסיס מחרוזת החיבור
+        redis_client = redis.Redis.from_url(KV_URL, decode_responses=True)
+        redis_client.ping() # בדיקת חיבור
+        print("✅ Redis client initialized successfully.")
+    except Exception as e:
+        print(f"❌ Redis initialization failed: {e}")
+        redis_client = None
+
 
 @app.route("/api/update-catalog")
-@app.route("/api/update-catalog/")
 def update_catalog():
-    
-    # --- 1. אתחול בתוך הפונקציה ---
+    if not creds or not SPREADSHEET_ID:
+         return jsonify({"status": "error", "message": "Missing Google Sheets configuration (SPREADSHEET_ID or GOOGLE_CREDENTIALS)."}), 500
+    if not redis_client:
+        return jsonify({"status": "error", "message": "Missing or invalid Redis (KV_URL) configuration."}), 500
+        
+    # 1. Google Sheets Data Fetch
     try:
-        print("Initializing update_catalog function...")
-        
-        # --- טעינת משתני סביבה ---
-        GOOGLE_CREDENTIALS_JSON = get_required_env("GOOGLE_CREDENTIALS")
-        OPENAI_API_KEY = get_required_env("OPENAI_API_KEY")
-        SHEET_ID = get_required_env("SPREADSHEET_ID")
-        SHEET_RANGE = get_required_env("SHEET_RANGE") 
-        KV_URL = get_required_env("KV_URL") # חדש: קבלת כתובת Vercel KV
-        
-        if '!' not in SHEET_RANGE:
-            raise ValueError(f"Fatal Error: SHEET_RANGE must be in 'SheetName!A1:Z' format. Got: {SHEET_RANGE}")
-            
-        SHEET_NAME = SHEET_RANGE.split('!')[0]
-        
-        print(f"✅ Environment variables loaded. Target Sheet ID: {SHEET_ID}, Sheet Name: '{SHEET_NAME}'")
-
-        # --- 2. אתחול Vercel KV ---
-        print("Authenticating with Vercel KV...")
-        url = urllib.parse.urlparse(KV_URL)
-        client_kv = Redis(
-            host=url.hostname,
-            port=url.port,
-            password=url.password,
-            username=url.username,
-            ssl=True,
-            db=0 # ברירת מחדל
-        )
-        # בדיקת חיבור פשוטה
-        client_kv.ping() 
-        print("✅ Vercel KV client initialized and connected.")
-
-        # --- 3. הגדרת הרשאות ---
-        print("Authenticating with Google...")
-        SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-        creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
-        CREDS = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        print("✅ Google Credentials loaded.")
-
-        # --- 4. אתחול לקוחות ---
-        client_gs = gspread.authorize(CREDS)
-        client_openai = OpenAI(api_key=OPENAI_API_KEY)
-        print("✅ Google Sheets and OpenAI clients initialized.")
-
-    except Exception as init_error:
-        print(f"❌ CRITICAL INIT FAILED: {str(init_error)}")
-        return jsonify({
-            "status": "error",
-            "error_type": "Initialization Failure",
-            "message": str(init_error),
-            "traceback": traceback.format_exc()
-        }), 500
-
-    # --- 5. לוגיקה ראשית (יצירת הקטלוג) ---
-    try:
-        print(f"Attempting to open Google Sheet: '{SHEET_NAME}'...")
-        sheet = client_gs.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
-        
+        print(f"Fetching data from Sheet ID: {SPREADSHEET_ID} and Range: {SHEET_NAME}...")
+        client_gs = gspread.authorize(creds)
+        sheet = client_gs.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME)
         records = sheet.get_all_records()
-        if not records:
-            return jsonify({"status": "warning", "count": 0, "message": "No records found in sheet."})
+        print(f"✅ Fetched {len(records)} records.")
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": f"Failed to fetch data from Google Sheets: {e}"}), 500
 
-        print(f"✅ Fetched {len(records)} records from Google Sheets.")
-        
+    # 2. OpenAI Embedding Generation
+    try:
+        print("Generating OpenAI embeddings...")
+        client_openai = OpenAI()
         products = []
-        
-        for i, r in enumerate(records):
-            # ... (Embedding generation logic remains the same) ...
-            # לוגיקת יצירת Embeddings:
-            product_name = r.get('שם מוצר', '')
-            description = r.get('תיאור', '')
-            category = r.get('קטגוריה', '')
-            brand = r.get('מותג', '')
-            
-            text_to_embed = f"שם: {product_name} | קטגוריה: {category} | מותג: {brand} | תיאור: {description}"
-            text_to_embed = text_to_embed.replace("\n", " ").strip()
-
-            if not text_to_embed or text_to_embed == "שם: | קטגוריה: | מותג: | תיאור:":
-                continue
-
+        for r in records:
+            text = f"{r['שם מוצר']} {r.get('תיאור','')} {r.get('קטגוריה','')} {r.get('מותג','')}"
             emb = client_openai.embeddings.create(
                 model="text-embedding-3-small",
-                input=text_to_embed
+                input=text
             ).data[0].embedding
-            
             products.append({"meta": r, "embedding": emb})
+        print(f"✅ Generated embeddings for {len(products)} products.")
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": f"Failed to generate embeddings: {e}. Check OPENAI_API_KEY."}), 500
 
-        print(f"✅ Generated {len(products)} embeddings.")
+    # 3. Save to Redis/KV Store
+    try:
+        print("Saving catalog to Redis...")
+        products_json = json.dumps(products, ensure_ascii=False)
+        # שמירה למפתח 'PRODUCT_CATALOG'
+        redis_client.set('PRODUCT_CATALOG', products_json)
         
-        # --- 6. שמירת הקטלוג ב-Vercel KV ---
-        print(f"Attempting to save {len(products)} items to Vercel KV...")
+        size_in_bytes = len(products_json.encode('utf-8'))
+        size_in_mb = size_in_bytes / (1024 * 1024)
+        print(f"✅ Catalog saved to 'PRODUCT_CATALOG' key. Size: {size_in_mb:.2f} MB.")
         
-        # המרת הנתונים למחרוזת JSON כדי לשמור ב-Redis
-        json_data = json.dumps(products, ensure_ascii=False) 
-        
-        # שמירת הקטלוג באמצעות מפתח משותף
-        client_kv.set("shopibot:smart_catalog_v1", json_data) 
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": f"Failed to save catalog to Redis: {e}"}), 500
 
-        print(f"✅ Smart Catalog (JSON string, {len(json_data):,} bytes) saved to Vercel KV.")
 
-        return jsonify({
-            "status": "ok",
-            "count": len(products),
-            "updated": datetime.now().isoformat(),
-            "sheet_id_used": SHEET_ID,
-            "sheet_name_used": SHEET_NAME,
-            "storage_used": "Vercel KV" # אישור שהשימוש הוא ב-KV
-        })
-        
-    except Exception as runtime_error:
-        print(f"❌ ERROR in update_catalog runtime: {str(runtime_error)}")
-        return jsonify({
-            "status": "error",
-            "error_type": "Runtime Failure",
-            "message": str(runtime_error),
-            "traceback": traceback.format_exc()
-        }), 500
+    return jsonify({
+        "status": "ok",
+        "count": len(products),
+        "storage_type": "Redis KV",
+        "storage_size_MB": f"{size_in_mb:.2f}",
+        "updated": datetime.now().isoformat()
+    })
