@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, make_response
 from openai import OpenAI
 import gspread
 import json
@@ -7,28 +7,23 @@ import redis
 import traceback
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import sys
+import threading # *** חדש: לריצה ברקע ***
 import urllib.parse
 import time
 
 app = Flask(__name__)
 
 # === Configuration & Initialization (Global Scope) ===
-
-# --- משתני סביבה (מתעדכנים לשם שהמערכת יצרה) ---
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
 SHEET_RANGE = os.environ.get("SHEET_RANGE")
 GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-
-# *** התיקון: שימוש בשם שהמערכת יצרה: shopipetbot_REDIS_URL ***
 KV_URL = os.environ.get("shopipetbot_REDIS_URL") 
 
-# Initialization Variables
 creds = None
 redis_client = None
 
-# --- 1. Initialize Google Sheets Credentials ---
+# ... (Initialization logic for Google and Redis remains the same) ...
 if GOOGLE_CREDENTIALS:
     try:
         service_account_info = json.loads(GOOGLE_CREDENTIALS)
@@ -40,10 +35,8 @@ if GOOGLE_CREDENTIALS:
     except Exception as e:
         print(f"❌ Google credentials error during initialization: {e}")
 
-# --- 2. Initialize Redis Client ---
 if KV_URL:
     try:
-        # יוצר אובייקט Redis על בסיס מחרוזת החיבור שהועברה
         redis_client = redis.Redis.from_url(KV_URL, decode_responses=True)
         redis_client.ping() 
         print("✅ Redis client initialized successfully.")
@@ -51,42 +44,29 @@ if KV_URL:
         print(f"❌ Redis initialization failed: {e}")
         redis_client = None
 
-
-@app.route("/api/update-catalog")
-@app.route("/api/update-catalog/")
-def update_catalog():
+# === פונקציית העבודה הארוכה (Long-Running Task) ===
+def run_embedding_job():
+    """מבצע את כל העבודה הכבדה של יצירת הקטלוג ושמירתו."""
     
-    # --- בדיקות קריטיות לפני התחלה ---
+    # בדיקות קריטיות (יכולות לקרות שוב בתוך ה-thread)
     if not creds or not SPREADSHEET_ID or not SHEET_RANGE or not OPENAI_API_KEY:
-         return jsonify({"status": "error", "message": "Missing Google Sheets/OpenAI configuration (Check all env vars).", "Redis_Status": "Connected" if redis_client else "Missing"}), 500
+        print("❌ JOB FAILED: Missing configuration variables.")
+        return 
     if not redis_client:
-        return jsonify({"status": "error", "message": "Missing or invalid Redis (KV_URL) configuration."}), 500
+        print("❌ JOB FAILED: Redis client disconnected.")
+        return
         
-    # --- חילוץ שם הגיליון (עם תיקון ה-.strip() לרווחים) ---
     try:
-        if '!' not in SHEET_RANGE:
-            raise ValueError(f"SHEET_RANGE must be in 'SheetName!A1:Z' format. Got: {SHEET_RANGE}")
-            
-        # חילוץ שם הגיליון וניקוי רווחים
+        # חילוץ שם הגיליון (עם התיקון)
         SHEET_NAME = SHEET_RANGE.split('!')[0].strip() 
         
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"SHEET_RANGE format error: {e}"}), 500
-
-    # 1. Google Sheets Data Fetch
-    try:
-        print(f"Fetching data from Sheet Name: '{SHEET_NAME}'...")
+        # 1. Google Sheets Data Fetch
         client_gs = gspread.authorize(creds)
         sheet = client_gs.open_by_key(SPREADSHEET_ID).worksheet(SHEET_NAME) 
         records = sheet.get_all_records()
-        print(f"✅ Fetched {len(records)} records.")
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "error", "message": f"Failed to fetch data from Google Sheets: {e}. Check sheet name and permissions."}), 500
+        print(f"✅ Background job fetched {len(records)} records.")
 
-    # 2. OpenAI Embedding Generation
-    try:
-        print("Generating OpenAI embeddings...")
+        # 2. OpenAI Embedding Generation
         client_openai = OpenAI(api_key=OPENAI_API_KEY)
         products = []
         for r in records:
@@ -96,31 +76,41 @@ def update_catalog():
                 input=text
             ).data[0].embedding
             products.append({"meta": r, "embedding": emb})
-        print(f"✅ Generated embeddings for {len(products)} products.")
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "error", "message": f"Failed to generate embeddings: {e}. Check OPENAI_API_KEY."}), 500
-
-    # 3. Save to Redis/KV Store
-    try:
-        print("Saving catalog to Redis...")
+        
+        # 3. Save to Redis/KV Store
         products_json = json.dumps(products, ensure_ascii=False)
-        # שמירה למפתח המשותף
         redis_client.set('shopibot:smart_catalog_v1', products_json)
         
         size_in_bytes = len(products_json.encode('utf-8'))
         size_in_mb = size_in_bytes / (1024 * 1024)
-        print(f"✅ Catalog saved to 'shopibot:smart_catalog_v1' key. Size: {size_in_mb:.2f} MB.")
         
+        print(f"✅ JOB COMPLETE! Catalog size: {size_in_mb:.2f} MB.")
+
     except Exception as e:
+        print(f"❌ CRITICAL JOB FAILURE: {e}")
         traceback.print_exc()
-        return jsonify({"status": "error", "message": f"Failed to save catalog to Redis: {e}"}), 500
 
+# === Main Update Route (Immediate Response) ===
 
-    return jsonify({
-        "status": "ok",
-        "count": len(products),
-        "storage_type": "Redis KV",
-        "storage_size_MB": f"{size_in_mb:.2f}",
-        "updated": datetime.now().isoformat()
-    })
+@app.route("/api/update-catalog")
+@app.route("/api/update-catalog/")
+def update_catalog():
+    
+    # בדיקה אם האתחול הבסיסי נכשל
+    if not creds or not redis_client or not OPENAI_API_KEY:
+        return jsonify({"status": "error", "message": "Critical initialization failed. Check environment variables in Vercel settings.", "KV_URL_Status": "Connected" if redis_client else "Missing"}), 500
+        
+    # הפעלת המשימה בחוט נפרד (רק אם המשתנים תקינים)
+    thread = threading.Thread(target=run_embedding_job)
+    thread.start()
+
+    # החזרת תשובה מיידית 202 ACCEPTED
+    response = make_response(jsonify({
+        "status": "started",
+        "message": "Update job started successfully in the background. Check /api/ping in 30 seconds to confirm the item count.",
+        "storage_type": "Redis KV"
+    }), 202)
+    
+    return response
+
+# ... (אם תרצה, הוסף את השורות של if __name__ == '__main__': כדי לאפשר הרצה מקומית, אבל הוא לא חיוני לפריסה ב-Vercel)
