@@ -20,14 +20,12 @@ try:
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
-    print("Warning: Google API not available")
 
 # Import OpenAI
 try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    print("Warning: OpenAI not available")
 
 # === Create Flask app ===
 app = Flask(__name__)
@@ -39,14 +37,14 @@ SHEET_RANGE = os.environ.get("SHEET_RANGE", "Sheet1!A2:R")
 GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# *** התיקון: שימוש בשם שהמערכת יצרה: shopipetbot_REDIS_URL ***
+# *** שימוש בשם שהמערכת יצרה ***
 KV_URL = os.environ.get("shopipetbot_REDIS_URL") 
 
 # Initialize clients
 creds = None
 openai_client = None
 product_catalog_embeddings = [] 
-kv_client = None # לקוח KV
+kv_client = None 
 
 # Initialize Google Sheets
 if GOOGLE_AVAILABLE and GOOGLE_CREDENTIALS:
@@ -72,15 +70,7 @@ if OPENAI_AVAILABLE and OPENAI_API_KEY:
 if KV_URL:
     try:
         # יוצר אובייקט Redis על בסיס מחרוזת החיבור
-        url = urllib.parse.urlparse(KV_URL)
-        kv_client = Redis(
-            host=url.hostname,
-            port=url.port,
-            password=url.password,
-            username=url.username,
-            ssl=True,
-            db=0
-        )
+        kv_client = Redis.from_url(KV_URL, decode_responses=True)
         kv_client.ping()
         print("✅ Vercel KV client initialized.")
     except Exception as e:
@@ -88,7 +78,7 @@ if KV_URL:
         kv_client = None
 
 
-# --- 2. לוגיקת החיפוש החכם והגיבוי (UPDATE) ---
+# --- 2. לוגיקת הטעינה מ-KV ---
 def load_smart_catalog():
     """טוען את קטלוג ה-Embeddings מ-Vercel KV"""
     global product_catalog_embeddings
@@ -100,14 +90,11 @@ def load_smart_catalog():
     try:
         print("Attempting to load Smart Catalog from Vercel KV...")
         
-        # קריאת הנתונים באמצעות המפתח המשותף
         json_data = kv_client.get("shopibot:smart_catalog_v1") 
         
         if json_data:
-            # הנתונים חוזרים כבייטים, יש להמיר ל-string ואז ל-JSON
-            data = json.loads(json_data.decode('utf-8'))
+            data = json.loads(json_data) # Redis client is now decode_responses=True
             
-            # ודא שהנתונים תקינים והופך Embeddings לרשימות Numpy
             product_catalog_embeddings = []
             for item in data:
                 if "meta" in item and "embedding" in item:
@@ -169,12 +156,12 @@ def find_products_by_embedding(query, limit=5):
             "url": p.get("קישור"),
             "sku": p.get("מק\"ט"),
             "score": res["score"],
-            "in_stock": True # הנחה שהכל במלאי, ניתן לשפר
+            "in_stock": True 
         })
     return top_products
 
 
-# --- 4. לוגיקת חיפוש הגיבוי הטקסטואלי (נשארת זהה) ---
+# --- 4. לוגיקת חיפוש הגיבוי הטקסטואלי ---
 SYNONYMS = {
     'כלב': ['כלבים', 'דוג', 'דוגי', 'כלבלב', 'puppy', 'dog', 'dogs'],
     'חתול': ['חתולים', 'קיטי', 'חתולון', 'חתלתול', 'cat', 'kitten', 'cats'],
@@ -449,8 +436,22 @@ def get_llm_response(message, products, context=None):
 
 @app.route('/', methods=['GET'])
 @app.route('/api', methods=['GET'])
-@app.route('/api/ping', methods=['GET'])
 def health_check():
+    # בודק מחדש אם הקטלוג נטען - הפעם מ-KV
+    if not product_catalog_embeddings:
+        load_smart_catalog()
+        
+    return jsonify({
+        "status": "ok",
+        "message": "ShopiBot API is running ✅",
+        "google_sheets": "connected" if creds else "disconnected",
+        "openai": "connected" if openai_client else "disconnected",
+        "smart_catalog_items": len(product_catalog_embeddings),
+        "storage": "Vercel KV" if kv_client else "Disconnected (Fallback Only)" 
+    })
+
+@app.route('/api/ping', methods=['GET'])
+def ping_check():
     # בודק מחדש אם הקטלוג נטען - הפעם מ-KV
     if not product_catalog_embeddings:
         load_smart_catalog()
