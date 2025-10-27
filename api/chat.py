@@ -10,8 +10,8 @@ from google.oauth2 import service_account
 from openai import OpenAI
 import traceback
 import sys
-from redis import Redis # חדש: יבוא Redis
-import urllib.parse # חדש: לטיפול ב-URL
+from redis import Redis 
+import urllib.parse 
 
 # --- 1. הגדרות ואתחול ---
 
@@ -38,13 +38,15 @@ SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1-XfEIXT0ovbhkWnBezc4v2xIcmUd
 SHEET_RANGE = os.environ.get("SHEET_RANGE", "Sheet1!A2:R")
 GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-KV_URL = os.environ.get("KV_URL") # חדש: קבלת כתובת Vercel KV
+
+# *** התיקון: שימוש בשם שהמערכת יצרה: shopipetbot_REDIS_URL ***
+KV_URL = os.environ.get("shopipetbot_REDIS_URL") 
 
 # Initialize clients
 creds = None
 openai_client = None
 product_catalog_embeddings = [] 
-kv_client = None # חדש: לקוח KV
+kv_client = None # לקוח KV
 
 # Initialize Google Sheets
 if GOOGLE_AVAILABLE and GOOGLE_CREDENTIALS:
@@ -69,6 +71,7 @@ if OPENAI_AVAILABLE and OPENAI_API_KEY:
 # Initialize Vercel KV
 if KV_URL:
     try:
+        # יוצר אובייקט Redis על בסיס מחרוזת החיבור
         url = urllib.parse.urlparse(KV_URL)
         kv_client = Redis(
             host=url.hostname,
@@ -82,15 +85,16 @@ if KV_URL:
         print("✅ Vercel KV client initialized.")
     except Exception as e:
         print(f"❌ Vercel KV connection error: {e}")
+        kv_client = None
 
 
-# --- 2. לוגיקת החיפוש החכם והגיבוי (שונה) ---
+# --- 2. לוגיקת החיפוש החכם והגיבוי (UPDATE) ---
 def load_smart_catalog():
     """טוען את קטלוג ה-Embeddings מ-Vercel KV"""
     global product_catalog_embeddings
     
     if not kv_client:
-        print("⚠️ Vercel KV client not connected.")
+        print("⚠️ Vercel KV client not connected. Cannot load smart catalog.")
         return False
         
     try:
@@ -126,8 +130,6 @@ load_smart_catalog()
 
 
 # --- 3. חיפוש חכם (Embedded Search) ---
-# ... (הקוד של find_products_by_embedding נשאר זהה) ...
-
 def get_embedding(text, model="text-embedding-3-small"):
    text = text.replace("\n", " ")
    return openai_client.embeddings.create(input = [text], model=model).data[0].embedding
@@ -173,7 +175,6 @@ def find_products_by_embedding(query, limit=5):
 
 
 # --- 4. לוגיקת חיפוש הגיבוי הטקסטואלי (נשארת זהה) ---
-# ... (כל הפונקציות של החיפוש הטקסטואלי נשארות זהות) ...
 SYNONYMS = {
     'כלב': ['כלבים', 'דוג', 'דוגי', 'כלבלב', 'puppy', 'dog', 'dogs'],
     'חתול': ['חתולים', 'קיטי', 'חתולון', 'חתלתול', 'cat', 'kitten', 'cats'],
@@ -444,7 +445,7 @@ def get_llm_response(message, products, context=None):
         print(f"❌ OpenAI error: {e}")
         return "הנה כמה מוצרים מעולים עבורך! 🐾"
 
-# === 5. ROUTES (שונה) ===
+# === 5. ROUTES (UPDATE) ===
 
 @app.route('/', methods=['GET'])
 @app.route('/api', methods=['GET'])
@@ -460,10 +461,9 @@ def health_check():
         "google_sheets": "connected" if creds else "disconnected",
         "openai": "connected" if openai_client else "disconnected",
         "smart_catalog_items": len(product_catalog_embeddings),
-        "storage": "Vercel KV" if kv_client else "Disconnected (Fallback Only)" # אישור ש-KV מחובר
+        "storage": "Vercel KV" if kv_client else "Disconnected (Fallback Only)" 
     })
 
-# ... (שאר ה-routes נשארים זהים) ...
 @app.route('/api/test-sheets', methods=['GET'])
 def test_sheets():
     try:
@@ -602,3 +602,9 @@ def serve_openapi_file():
     """Serves the openapi.json file from the /public directory"""
     path = os.path.join(app.root_path, '..', 'public')
     return send_from_directory(path, 'openapi.json')
+
+if __name__ == '__main__':
+    # מאפשר הרצה מקומית לצורך בדיקות
+    print("Starting Flask server for local development...")
+    load_smart_catalog() # נסיון לטעון קטלוג מקומי אם קיים
+    app.run(debug=True, port=8000)
