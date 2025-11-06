@@ -1,10 +1,10 @@
 {
   "version": 2,
-  "functions": {
-    "api/*.py": {
-      "runtime": "vercel-python@3.12"
-    }
-  },
+  "builds": [
+    { "src": "api/chat.py", "use": "@vercel/python" },
+    { "src": "api/ping.py", "use": "@vercel/python" },
+    { "src": "api/update_catalog.py", "use": "@vercel/python" }
+  ],
   "routes": [
     { "src": "/api/update-catalog", "dest": "/api/update_catalog.py" },
     { "src": "/api/ping", "dest": "/api/ping.py" },
