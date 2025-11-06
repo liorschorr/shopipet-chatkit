@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "functions": {
+    "api/index.py": {
+      "runtime": "python3.9",
+      "maxDuration": 300
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/update-catalog",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
