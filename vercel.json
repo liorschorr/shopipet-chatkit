@@ -1,11 +1,17 @@
 {
   "version": 2,
+  "functions": {
+    "api/chat.py": {
+      "maxDuration": 300
+    }
+  },
   "routes": [
-    { "src": "/api/update-catalog", "dest": "/api/update_catalog.py" },
-    { "src": "/api/ping", "dest": "/api/ping.py" },
-    { "src": "/api/(.*)", "dest": "/api/chat.py" }
+    { "src": "/(.*)", "dest": "/api/chat.py" }
   ],
   "crons": [
-    { "path": "/api/update-catalog", "schedule": "0 3 * * *" }
+    {
+      "path": "/api/update-catalog",
+      "schedule": "0 3 * * *"
+    }
   ]
 }
