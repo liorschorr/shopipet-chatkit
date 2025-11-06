@@ -1,9 +1,9 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/chat.py", "use": "@vercel/python" },
-    { "src": "api/ping.py", "use": "@vercel/python" },
-    { "src": "api/update_catalog.py", "use": "@vercel/python" }
+    { "src": "api/chat.py", "use": "@vercel/python@3.9.0" },
+    { "src": "api/ping.py", "use": "@vercel/python@3.9.0" },
+    { "src": "api/update_catalog.py", "use": "@vercel/python@3.9.0" }
   ],
   "routes": [
     { "src": "/api/update-catalog", "dest": "/api/update_catalog.py" },
@@ -21,4 +21,3 @@
     }
   ]
 }
- 
