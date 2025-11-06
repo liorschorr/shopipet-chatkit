@@ -1,14 +1,13 @@
 {
   "version": 2,
-  "functions": {
-    "api/**/*.py": {
-      "runtime": "python3.9"
-    }
-  },
+  "builds": [
+    { "src": "api/chat.py", "use": "@vercel/python@5.0.12" },
+    { "src": "api/ping.py", "use": "@vercel/python@5.0.12" },
+    { "src": "api/update_catalog.py", "use": "@vercel/python@5.0.12" }
+  ],
   "routes": [
-    { "src": "/api/ping", "dest": "/api/ping.py" },
     { "src": "/api/update-catalog", "dest": "/api/update_catalog.py" },
-    { "src": "/api/chat", "dest": "/api/chat.py" },
+    { "src": "/api/ping", "dest": "/api/ping.py" },
     { "src": "/api/(.*)", "dest": "/api/chat.py" }
   ],
   "crons": [
