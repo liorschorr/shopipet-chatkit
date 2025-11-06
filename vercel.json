@@ -1,23 +1,17 @@
 {
   "version": 2,
-  "builds": [
-    { "src": "api/chat.py", "use": "@vercel/python@latest" },
-    { "src": "api/ping.py", "use": "@vercel/python@latest" },
-    { "src": "api/update_catalog.py", "use": "@vercel/python@latest" }
-  ],
+  "functions": {
+    "api/**/*.py": {
+      "runtime": "python3.9"
+    }
+  },
   "routes": [
-    { "src": "/api/update-catalog", "dest": "/api/update_catalog.py" },
     { "src": "/api/ping", "dest": "/api/ping.py" },
-    { "src": "/api/(.*)", "dest": "/api/chat.py" },
-    { "src": "/web/(.*)", "dest": "/api/chat.py" },
-    { "src": "/public/(.*)", "dest": "/api/chat.py" },
-    { "src": "/openapi.json", "dest": "/api/chat.py" },
-    { "src": "/(.*)", "dest": "/api/chat.py" }
+    { "src": "/api/update-catalog", "dest": "/api/update_catalog.py" },
+    { "src": "/api/chat", "dest": "/api/chat.py" },
+    { "src": "/api/(.*)", "dest": "/api/chat.py" }
   ],
   "crons": [
-    {
-      "path": "/api/update-catalog",
-      "schedule": "0 3 * * *"
-    }
+    { "path": "/api/update-catalog", "schedule": "0 3 * * *" }
   ]
 }
