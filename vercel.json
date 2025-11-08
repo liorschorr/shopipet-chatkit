@@ -1,27 +1,11 @@
 {
   "version": 2,
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/chat" },
-    { "source": "/embed.js", "destination": "/web/embed.js" }
+  "builds": [
+    { "src": "api/chat.py", "use": "@vercel/python" },
+    { "src": "web/**", "use": "@vercel/static" }
   ],
-  "headers": [
-    {
-      "source": "/web/embed.js",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
-      ] 
-    },
-    {
-      "source": "/embed.js",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
-      ] 
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/update-catalog",
-      "schedule": "0 3 * * *"
-    }
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/chat.py" },
+    { "src": "/(.*)", "dest": "/web/$1" }
   ]
 }
