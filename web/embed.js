@@ -1,4 +1,8 @@
 (() => {
+  // בסיס ה-API של האתר שלך (לא של Vercel)
+  const API_BASE = "https://dev.shopipet.co.il";
+
+  // שומר גם את דומיין האתר שבו נטען הווידג'ט (לשימוש פנימי)
   const ORIGIN = window.location.origin.replace(/\/$/, ""); // dev או www לפי האתר
 
   const container = document.createElement("div");
@@ -16,6 +20,7 @@
   container.style.zIndex = "999999";
   container.style.fontFamily = "'Heebo', sans-serif";
   document.body.appendChild(container);
+
 
   const toggleBtn = document.createElement("div");
   toggleBtn.innerHTML = `
@@ -124,11 +129,11 @@
     if (!text) return;
     appendMessage(text, "user");
     input.value = "";
-    appendMessage("⏳ מחפש מוצרים...");
+    appendMessage("⏳ חושב...");
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
+const res = await fetch(`${API_BASE}/api/chat`, {
+  method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
       });
