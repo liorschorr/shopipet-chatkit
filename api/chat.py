@@ -228,7 +228,24 @@ def normalize_headers(headers):
 
 # --- פונקציות עזר לחיפוש טקסט ---
 def is_pet_related_query(query):
-    # החלף בלוגיקה האמיתית שלך
+    """
+    בודק אם השאלה קשורה לחיות מחמד או לשירות החנות.
+    אם לא - OpenAI ידאג לתת תשובה מנומסת.
+    """
+    # מילות מפתח ברורות שמצביעות על שאלה לא רלוונטית
+    irrelevant_keywords = [
+        'מתכון', 'בישול', 'אוכל אנושי', 'מכונית', 'בית', 'נדל"ן',
+        'פוליטיקה', 'כדורגל', 'מוזיקה', 'סרט', 'משחק מחשב'
+    ]
+    
+    query_lower = query.lower()
+    
+    # אם יש מילה ברורה שזה לא קשור - החזר False
+    for keyword in irrelevant_keywords:
+        if keyword in query_lower:
+            return False
+    
+    # אחרת - תן ל-OpenAI לטפל בזה (הוא יותר חכם)
     return True
 
 def fetch_rows():
@@ -257,11 +274,77 @@ def find_products_by_text_fallback(message, limit=5, filters={}):
     return items
 
 def get_llm_response(message, products, context=None):
-    """ הפונקציה שלך ליצירת תגובת שפה טבעית """
-    if products:
-        return "מצאתי כמה מוצרים שתואמים לחיפוש שלך! 🐾"
-    else:
-        return "לא מצאתי מוצרים שתואמים בדיוק. נסה לחפש משהו אחר?"
+    """
+    יוצר תגובה בשפה טבעית באמצעות OpenAI
+    מבוסס רק על המוצרים שנמצאו בDB
+    """
+    if not openai_client:
+        # גיבוי אם OpenAI לא זמין
+        if products:
+            return f"מצאתי {len(products)} מוצרים מתאימים עבורך! 🐾"
+        else:
+            return "לא מצאתי מוצרים מתאימים. נסה לנסח את החיפוש אחרת!"
+    
+    try:
+        # בניית רשימת המוצרים למודל
+        if products:
+            products_summary = "\n".join([
+                f"- {p['name']} ({p.get('brand', 'ללא מותג')}) - ₪{p.get('price', 'N/A')}"
+                for p in products[:5]  # מקסימום 5 מוצרים
+            ])
+            products_context = f"מצאתי את המוצרים הבאים:\n{products_summary}"
+        else:
+            products_context = "לא נמצאו מוצרים מתאימים בחנות."
+        
+        # System prompt - הוראות ברורות למודל
+        system_prompt = """אתה שופיבוט - עוזר וירטואלי של חנות שופיפט למוצרי חיות מחמד.
+
+כללים חשובים:
+1. ענה רק על שאלות הקשורות לחיות מחמד, מוצרי חיות מחמד, או שירות החנות
+2. אל תציע לעולם מוצרים שלא מופיעים ברשימת המוצרים שקיבלת
+3. אם שאלו שאלה לא קשורה לחיות מחמד - הסבר שאתה מתמחה רק במוצרים לחיות מחמד
+4. תן תשובות קצרות (1-2 משפטים), ידידותיות ומועילות
+5. השתמש באימוג'י רלוונטי (🐶🐱🐹🐦🐠) בצורה מתונה
+6. אם יש מוצרים - תאר אותם בקצרה ובצורה מזמינה
+7. אם אין מוצרים - הצע לנסות חיפוש אחר או לפנות לשירות לקוחות
+
+דוגמאות לתשובות טובות:
+- "מצאתי 3 מזונות איכותיים לגורים! המומלץ ביותר הוא Royal Canin - מזון פרימיום המותאם במיוחד לגורי כלבים 🐶"
+- "יש לי 5 משחקים מעולים לחתולים! מגוון של משחקי טיזר, כדורים ומתקני גירוד 🐱"
+- "לא מצאתי בדיוק מה שחיפשת, אבל תוכל לפנות לשירות הלקוחות שלנו בטלפון או לנסות חיפוש אחר"
+
+אל תכתוב משפטים כמו "לפי הנתונים שקיבלתי" או "במאגר שלי" - דבר בצורה טבעית."""
+
+        # User prompt
+        user_prompt = f"""שאלת הלקוח: "{message}"
+
+{products_context}
+
+תן תשובה קצרה וידידותית (עד 2 משפטים) שמתאימה לשאלה ולמוצרים שנמצאו."""
+
+        # קריאה ל-OpenAI
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",  # מודל חסכוני וטוב
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=150,
+            temperature=0.7
+        )
+        
+        reply = response.choices[0].message.content.strip()
+        return reply
+        
+    except Exception as e:
+        print(f"⚠️ Error in get_llm_response: {e}")
+        traceback.print_exc()
+        
+        # תשובת גיבוי במקרה של שגיאה
+        if products:
+            return f"מצאתי {len(products)} מוצרים עבורך! 🐾"
+        else:
+            return "לא מצאתי מוצרים מתאימים. אשמח לעזור בחיפוש אחר!"
 
 
 # --- 5. לוגיקת עדכון קטלוג (משופרת וממוטבת!) ---
@@ -451,6 +534,58 @@ def clear_kv():
         })
 
 
+@app.route('/api/flush-kv', methods=['GET', 'POST'])
+def flush_kv():
+    """⚠️ מנקה את כל ה-KV לגמרי (שימוש רק במצבי חירום!)"""
+    if not kv_client:
+        return jsonify({"status": "error", "message": "KV not connected"})
+    
+    try:
+        # מחק הכל!
+        kv_client.flushdb()
+        
+        # נקה גם את הקטלוג בזיכרון
+        global product_catalog_embeddings
+        product_catalog_embeddings = []
+        
+        return jsonify({
+            "status": "success",
+            "message": "⚠️ All KV data has been flushed completely!"
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error", 
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        })
+
+
+@app.route('/api/kv-info', methods=['GET'])
+def kv_info():
+    """מציג מידע על שימוש ב-KV"""
+    if not kv_client:
+        return jsonify({"status": "error", "message": "KV not connected"})
+    
+    try:
+        info = kv_client.info('memory')
+        keys = kv_client.keys('*')
+        
+        return jsonify({
+            "status": "ok",
+            "used_memory": info.get('used_memory_human', 'N/A'),
+            "used_memory_peak": info.get('used_memory_peak_human', 'N/A'),
+            "maxmemory": info.get('maxmemory_human', 'N/A'),
+            "total_keys": len(keys),
+            "keys": keys[:20]  # רק 20 הראשונים
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error", 
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        })
+
+
 # --- ה-ROUTE לעדכון הקטלוג ---
 @app.route('/api/update-catalog', methods=['GET', 'POST'])
 def handle_update_catalog():
@@ -482,11 +617,8 @@ def chat():
         if not message:
             return jsonify({"message": "במה אוכל לעזור? 😊", "items": []})
         
-        if not is_pet_related_query(message):
-             return jsonify({
-                 "message": "אני מתמחה רק במוצרים לחיות מחמד! 🐾 מה חיית המחמד שלך צריכה?",
-                 "items": []
-             })
+        # בדיקה בסיסית בלבד - OpenAI יטפל בשאלות לא רלוונטיות בצורה חכמה יותר
+        # (הפונקציה is_pet_related_query מזהה רק שאלות ברורות שלא קשורות)
 
         top_items = []
         search_mode = "smart"
