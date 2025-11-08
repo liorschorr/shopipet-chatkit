@@ -1,5 +1,6 @@
 (() => {
-  // יצירת קונטיינר לצ'אט
+  const ORIGIN = window.location.origin.replace(/\/$/, ""); // dev או www לפי האתר
+
   const container = document.createElement("div");
   container.id = "shopipet-chat";
   container.style.position = "fixed";
@@ -16,35 +17,21 @@
   container.style.fontFamily = "'Heebo', sans-serif";
   document.body.appendChild(container);
 
-  // כפתור הפעלה
   const toggleBtn = document.createElement("div");
   toggleBtn.innerHTML = `
     <div style="
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      width: 64px;
-      height: 64px;
-      border-radius: 50%;
-      background: #ffd600;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.25);
-      cursor: pointer;
-      z-index: 999999;
-    ">
+      position: fixed; bottom: 20px; right: 20px;
+      width: 64px; height: 64px; border-radius: 50%;
+      background: #ffd600; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.25); cursor: pointer; z-index: 999999;">
       <img src="https://cdn-icons-png.flaticon.com/512/616/616408.png" style="width:38px;height:38px;">
-    </div>
-  `;
+    </div>`;
   document.body.appendChild(toggleBtn);
 
   toggleBtn.addEventListener("click", () => {
-    container.style.display =
-      container.style.display === "none" ? "flex" : "none";
+    container.style.display = container.style.display === "none" ? "flex" : "none";
   });
 
-  // מבנה הצ'אט
   container.innerHTML = `
     <div style="flex-direction:column;display:flex;width:100%;height:100%;">
       <div style="background:#f7f1fa;padding:10px;text-align:center;font-weight:600;color:#333;border-bottom:1px solid #eee;">
@@ -77,8 +64,28 @@
     chatBody.scrollTop = chatBody.scrollHeight;
   };
 
+  const normalizeItemUrls = (p) => {
+    const safeId = p.id;
+    const isSearch = p.url && p.url.includes("?s=");
+    const hasPid = p.url && /[?&]p=\d+/.test(p.url);
+    // תמיד נכפה דומיין נוכחי
+    if (hasPid) {
+      const pid = new URL(p.url, ORIGIN).searchParams.get("p");
+      p.url = `${ORIGIN}/product/?p=${pid}`;
+    } else if (safeId) {
+      p.url = `${ORIGIN}/product/?p=${safeId}`;
+    }
+    // add-to-cart
+    if (safeId && p.has_variants === false) {
+      p.add_to_cart_url = `${ORIGIN}/?add-to-cart=${safeId}`;
+    } else if (safeId && (!p.add_to_cart_url || isSearch)) {
+      p.add_to_cart_url = `${ORIGIN}/product/?p=${safeId}`;
+    }
+    return p;
+  };
+
   const appendProducts = (items) => {
-    items.forEach((p) => {
+    items.map(normalizeItemUrls).forEach((p) => {
       const card = document.createElement("div");
       card.style.border = "1px solid #eee";
       card.style.borderRadius = "12px";
@@ -89,26 +96,24 @@
       card.style.alignItems = "flex-start";
       card.style.direction = "rtl";
 
+      const price = p.price ? `₪${p.price}` : "";
+      const btnHtml = p.has_variants
+        ? `<a href="${p.url}" target="_blank"
+             style="background:#fff;border:1px solid #ccc;border-radius:8px;padding:6px 10px;font-size:13px;text-decoration:none;color:#333;">
+             בחר אפשרויות</a>`
+        : `<a href="${p.add_to_cart_url || p.url}" target="_blank"
+             style="background:#ffd600;border:none;border-radius:8px;padding:6px 10px;font-size:13px;text-decoration:none;color:#000;font-weight:600;">
+             הוסף לסל</a>`;
+
       card.innerHTML = `
-        <img src="${p.image || "https://via.placeholder.com/80"}" 
+        <img src="${p.image || "https://via.placeholder.com/80"}"
              style="width:80px;height:80px;object-fit:cover;border-radius:10px;flex-shrink:0;">
         <div style="flex:1">
-          <div style="font-weight:600;color:#333;margin-bottom:4px;">${p.name}</div>
+          <div style="font-weight:600;color:#333;margin-bottom:4px;">${p.name || ""}</div>
           <div style="font-size:13px;color:#555;margin-bottom:6px;">${p.description || ""}</div>
-          <div style="font-weight:600;margin-bottom:6px;">₪${p.price || ""}</div>
-          ${
-            p.has_variants
-              ? `<a href="${p.url}" target="_blank"
-                   style="background:#fff;border:1px solid #ccc;border-radius:8px;padding:6px 10px;font-size:13px;text-decoration:none;color:#333;">
-                   בחר אפשרויות
-                 </a>`
-              : `<a href="${p.add_to_cart_url}" target="_blank"
-                   style="background:#ffd600;border:none;border-radius:8px;padding:6px 10px;font-size:13px;text-decoration:none;color:#000;font-weight:600;">
-                   הוסף לסל
-                 </a>`
-          }
-        </div>
-      `;
+          <div style="font-weight:600;margin-bottom:6px;">${price}</div>
+          ${btnHtml}
+        </div>`;
       chatBody.appendChild(card);
     });
     chatBody.scrollTop = chatBody.scrollHeight;
