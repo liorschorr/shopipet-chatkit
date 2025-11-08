@@ -7,16 +7,6 @@
   ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "api/chat.py" },
-    { "source": "/web/(.*)", "destination": "web/$1" },
-    { "source": "/openapi.json", "destination": "public/openapi.json" },
-    { "source": "/", "destination": "web/embed.js" }
-  ],
-  "headers": [
-    {
-      "source": "/web/embed.js",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
-      ]
-    }
+    { "source": "/web/(.*)", "destination": "web/$1" }
   ]
 }
