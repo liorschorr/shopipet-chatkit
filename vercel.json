@@ -6,8 +6,8 @@
     { "src": "web/**", "use": "@vercel/static" }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/chat.py" },
-    { "src": "/web/(.*)", "dest": "/web/$1" },
-    { "src": "/public/(.*)", "dest": "/public/$1" }
+    { "src": "/api/(.*)", "dest": "api/chat.py" },
+    { "src": "/web/(.*)", "dest": "web/$1" },
+    { "src": "/public/(.*)", "dest": "public/$1" }
   ]
 }
