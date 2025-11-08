@@ -5,7 +5,7 @@ import time
 import numpy as np
 from numpy.linalg import norm
 from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
+from flask_cors import CORS 
 from openai import OpenAI
 import redis
 from urllib.parse import urlparse, parse_qs
