@@ -16,7 +16,7 @@ CORS(app)
 # ====== ENV ======
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 KV_URL = os.environ.get("shopipetbot_REDIS_URL")  # או קונפיג משלך ל-Redis/Vercel KV
-SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "").rstrip("/")  # למשל: https://dev.shopipet.co.il
+SITE_BASE_URL = os.environ.get("WOO_BASE_URL", "").rstrip("/") # למשל: https://dev.shopipet.co.il
 
 # לקוח OpenAI
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
