@@ -1,4 +1,3 @@
-<script>
 (function () {
   const VERCEL_API_BASE = 'https://shopipet-chatkit.vercel.app';
 
@@ -101,30 +100,95 @@
     border: 1px solid #eee;
   }
 
+  /* כרטיס מוצר משופר */
   .prod {
     display: flex;
-    gap: 10px;
+    flex-direction: column;
     border: 1px solid #eee;
-    padding: 8px;
+    padding: 12px;
     border-radius: 10px;
-    margin: 6px 0;
+    margin: 8px 0;
     background: #fff;
-    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: box-shadow 0.2s;
   }
+  .prod:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
+  
+  .prod-header {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  
   .prod img {
-    width: 60px;
-    height: 60px;
+    width: 80px;
+    height: 80px;
     object-fit: cover;
     border-radius: 8px;
+    flex-shrink: 0;
   }
-  .prod .meta {
-    font-size: 13px;
+  
+  .prod-info {
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .prod-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 4px;
     line-height: 1.3;
   }
-  .prod .meta strong {
-    display: block;
+  
+  .prod-brand {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 4px;
+  }
+  
+  .prod-desc {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.4;
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .prod-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  
+  .prod-price {
+    font-size: 18px;
+    font-weight: 700;
+    color: #2c7a3f;
+  }
+  
+  .prod-btn {
+    background: #fbda16;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-weight: 600;
     font-size: 14px;
-    color: #333;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }
+  .prod-btn:hover {
+    background: #e5c614;
+  }
+  .prod-btn:active {
+    transform: scale(0.98);
   }
 
   /* תיקון מלא למובייל */
@@ -161,6 +225,19 @@
       bottom: 0;
       z-index: 2;
       background: #fff;
+    }
+    
+    .prod img {
+      width: 70px;
+      height: 70px;
+    }
+    
+    .prod-name {
+      font-size: 14px;
+    }
+    
+    .prod-desc {
+      font-size: 12px;
     }
   }
   `;
@@ -219,17 +296,32 @@
     items.forEach(p => {
       const card = document.createElement('div');
       card.className = 'prod';
+      
+      // בניית URL נכון למוצר
+      const productUrl = p.url || `https://dev.shopipet.co.il/?s=${encodeURIComponent(p.name)}`;
+      
       card.innerHTML = `
-        <img src="${p.image || ''}" alt="${p.name || ''}" />
-        <div class="meta">
-          <strong>${p.name || ''}</strong>
-          <div>${p.description || ''}</div>
-          <div><b>${p.price ? '₪' + p.price : ''}</b></div>
+        <div class="prod-header">
+          <img src="${p.image || ''}" alt="${p.name || ''}" onerror="this.src='https://via.placeholder.com/80?text=No+Image'" />
+          <div class="prod-info">
+            <div class="prod-name">${p.name || ''}</div>
+            ${p.brand ? `<div class="prod-brand">${p.brand}</div>` : ''}
+          </div>
+        </div>
+        <div class="prod-desc">${p.description || p.short_description || ''}</div>
+        <div class="prod-footer">
+          <div class="prod-price">${p.price ? '₪' + p.price : 'מחיר לא זמין'}</div>
+          <button class="prod-btn" data-url="${productUrl}">הוספה לסל 🛒</button>
         </div>
       `;
-      card.onclick = () => {
-        window.open('https://dev.shopipet.co.il/?s=' + encodeURIComponent(p.name), '_blank');
-      };
+      
+      // כפתור הוספה לסל - פותח את דף המוצר בטאב חדש
+      const btn = card.querySelector('.prod-btn');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.open(productUrl, '_blank');
+      });
+      
       body.appendChild(card);
     });
     body.scrollTop = body.scrollHeight;
@@ -251,10 +343,21 @@
       });
       const data = await res.json();
       body.lastChild.remove(); // remove "מחפש בשבילך..."
-      addBot(data.message || 'הנה מה שמצאתי:');
-      if (data.items && data.items.length) addProducts(data.items);
-      else addBot('לא מצאתי מוצרים מתאימים 😔');
-    } catch {
+      
+      // הצג את התשובה מ-OpenAI
+      if (data.message) {
+        addBot(data.message);
+      }
+      
+      // הצג מוצרים אם יש
+      if (data.items && data.items.length > 0) {
+        addProducts(data.items);
+      } else if (!data.message || data.message.includes('לא מצאתי')) {
+        addBot('לא מצאתי מוצרים מתאימים 😔 נסה לנסח את החיפוש אחרת או שאל אותי משהו נוסף!');
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      body.lastChild.remove();
       addBot('הייתה בעיה זמנית. נסה שוב מאוחר יותר.');
     }
   }
@@ -282,4 +385,3 @@
     }, 300);
   });
 })();
-</script>
