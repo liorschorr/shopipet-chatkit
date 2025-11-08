@@ -1,7 +1,7 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/chat.py", "use": "@vercel/python" },
+     { "src": "api/chat.py", "use": "@vercel/python" },
     { "src": "web/(.*)", "use": "@vercel/static" },
     { "src": "public/(.*)", "use": "@vercel/static" }
   ],
