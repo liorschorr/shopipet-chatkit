@@ -1,21 +1,32 @@
-  {
+{
   "version": 2,
   "builds": [
-    { "src": "api/chat.py", "use": "@vercel/python" },
-    { "src": "web/(.*)", "use": "@vercel/static" },
-    { "src": "public/(.*)", "use": "@vercel/static" }
+    {
+      "src": "api/chat.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "web/(.*)",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "public/(.*)",
+      "use": "@vercel/static"
+    }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "api/chat.py" },
     { "src": "/web/(.*)", "dest": "web/$1" },
-    { "src": "/public/(.*)", "dest": "public/$1" },
-    { "src": "/", "dest": "web/embed.js" }
+    { "src": "/public/(.*)", "dest": "public/$1" }
   ],
   "headers": [
     {
-      "source": "/web/embed.js",
+      "source": "/web/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
       ]
     }
   ]
