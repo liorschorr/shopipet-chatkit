@@ -1,7 +1,5 @@
 
 {
-  console.log("build test", Date.now());
-
   "version": 2,
   "builds": [
      { "src": "api/chat.py", "use": "@vercel/python" },
