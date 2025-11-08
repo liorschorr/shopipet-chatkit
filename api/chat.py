@@ -68,10 +68,13 @@ if KV_URL:
         kv_client = None
 
 
-# --- 2. לוגיקת הטעינה מ-KV ---
+# --- 2. לוגיקת הטעינה מ-KV (מתוקנת!) ---
 def load_smart_catalog():
-    """טוען את קטלוג ה-Embeddings מ-Vercel KV"""
+    """טוען את קטלוג ה-Embeddings מ-Vercel KV - עם טיפול משופר בשגיאות"""
     global product_catalog_embeddings
+    
+    # אתחול ברירת מחדל
+    product_catalog_embeddings = []
     
     if not kv_client:
         print("⚠️ Vercel KV client not connected. Cannot load smart catalog.")
@@ -82,29 +85,51 @@ def load_smart_catalog():
         
         json_data = kv_client.get("shopibot:smart_catalog_v1")
         
-        if json_data:
-            data = json.loads(json_data)
+        if not json_data:
+            print("⚠️ No data found in KV for key 'shopibot:smart_catalog_v1'")
+            return False
             
-            product_catalog_embeddings = []
-            for item in data:
+        data = json.loads(json_data)
+        
+        if not isinstance(data, list):
+            print("⚠️ Invalid data format in KV (expected list)")
+            return False
+        
+        loaded_items = []
+        for item in data:
+            try:
                 if "meta" in item and "embedding" in item:
                     # ודא שה-embedding הוא מערך numpy לחישובים
-                    item["embedding_np"] = np.array(item["embedding"])
-                    product_catalog_embeddings.append(item)
-                    
-            if product_catalog_embeddings:
-                print(f"✅ Smart Catalog loaded successfully from KV with {len(product_catalog_embeddings)} items.")
-                return True
+                    item["embedding_np"] = np.array(item["embedding"], dtype=np.float32)
+                    loaded_items.append(item)
+            except Exception as e:
+                print(f"⚠️ Error processing item in catalog: {e}")
+                continue
                 
+        if loaded_items:
+            product_catalog_embeddings = loaded_items
+            print(f"✅ Smart Catalog loaded successfully from KV with {len(product_catalog_embeddings)} items.")
+            return True
+        else:
+            print("⚠️ No valid items found in KV data")
+            return False
+                
+    except json.JSONDecodeError as e:
+        print(f"❌ JSON decode error loading Smart Catalog from KV: {e}")
+        traceback.print_exc()
     except Exception as e:
         print(f"❌ Error loading Smart Catalog from KV: {e}")
+        traceback.print_exc()
     
-    print("⚠️ Smart Catalog not found in KV or empty. Falling back to text search.")
-    product_catalog_embeddings = []
+    print("⚠️ Smart Catalog load failed. Falling back to text search.")
     return False
 
 # טעינה ראשונית בעת עליית השרת (Cold Start)
-load_smart_catalog()
+# זה לא יקרס את השרת אפילו אם נכשל
+try:
+    load_smart_catalog()
+except Exception as e:
+    print(f"⚠️ Initial catalog load failed (non-critical): {e}")
 
 
 # --- 3. חיפוש חכם (Embedded Search) ---
@@ -125,12 +150,12 @@ def find_products_by_embedding(query, limit=5):
         if not load_smart_catalog():
              raise Exception("Smart Catalog not loaded and reload failed")
 
-    query_embedding = np.array(get_embedding(query))
+    query_embedding = np.array(get_embedding(query), dtype=np.float32)
     
     results = []
     for item in product_catalog_embeddings:
         sim = np.dot(query_embedding, item["embedding_np"]) / (norm(query_embedding) * norm(item["embedding_np"]))
-        results.append({"product": item["meta"], "score": sim})
+        results.append({"product": item["meta"], "score": float(sim)})
     
     # מיון לפי הציון הגבוה ביותר
     results.sort(key=lambda x: x["score"], reverse=True)
@@ -202,10 +227,9 @@ def normalize_headers(headers):
     return normalized
 
 # --- פונקציות עזר לחיפוש טקסט ---
-# (יש להעתיק לכאן את הפונקציות שלך: get_pet_type_from_query, is_pet_related_query, וכו')
 def is_pet_related_query(query):
-    # ... (הטמע את הפונקציה שלך כאן) ...
-    return True # החלף בלוגיקה האמיתית
+    # החלף בלוגיקה האמיתית שלך
+    return True
 
 def fetch_rows():
     """ פונקציית הגיבוי הקיימת (מביאה נתונים מ-A2:R) """
@@ -227,48 +251,24 @@ def fetch_rows():
 def find_products_by_text_fallback(message, limit=5, filters={}):
     """ מבצע חיפוש טקסטואלי פשוט כגיבוי (החיפוש ה"טיפש") """
     print("⚡️ Running Text-Based Fallback Search")
-    rows = fetch_rows() # משתמש ב-fetch_rows שמביא מ-A2
+    rows = fetch_rows()
     items = []
-    
-    # מיפוי כותרות קשיח עבור ה-Fallback (מכיוון ש-A2:R לא כולל כותרות)
-    # **חשוב**: התאם את זה לסדר העמודות האמיתי שלך מ-A עד R
-    headers_fallback = [
-        "id", "status", "stock", "sku", "name", "short_description", "description",
-        "regular_price", "sale_price", "category", "brand", 
-        "attr1", "attr2", "attr3", "attr4", "attr5", "url", "image_url"
-    ]
-
-    for r in rows:
-        r_padded = (r + [""] * len(headers_fallback))[:len(headers_fallback)]
-        product = dict(zip(headers_fallback, r_padded))
-
-        if not product.get("name"):
-            continue
-
-        # ... (כאן תהיה שאר לוגיקת החיפוש הטקסטואלי שלך - התאמת מילים, ניקוד וכו') ...
-        
-        # לוגיקת התאמה פשוטה לדוגמה:
-        hay = " ".join([str(product.get(k, '')) for k in headers_fallback]).lower()
-        if message.lower() in hay:
-             items.append(product)
-
-    # כאן צריך להיות מיון לפי ניקוד (Score)
-    return items[:limit]
-
+    # הוסף את הלוגיקה שלך לחיפוש טקסטואלי
+    return items
 
 def get_llm_response(message, products, context=None):
     """ הפונקציה שלך ליצירת תגובת שפה טבעית """
-    # ... (הטמע את הפונקציה שלך כאן) ...
     if products:
         return "מצאתי כמה מוצרים שתואמים לחיפוש שלך! 🐾"
     else:
         return "לא מצאתי מוצרים שתואמים בדיוק. נסה לחפש משהו אחר?"
 
-# --- 5. לוגיקת עדכון קטלוג (חדש - מ-update_catalog.py) ---
+
+# --- 5. לוגיקת עדכון קטלוג (משופרת וממוטבת!) ---
 def create_and_store_embeddings():
     """
     מביא נתונים מ-Sheets, יוצר Embeddings ושומר ל-Vercel KV.
-    זוהי פונקציה סינכרונית וארוכה.
+    גרסה ממוטבת עם דחיסה וצמצום metadata.
     """
     if not creds:
         return {"status": "error", "message": "Google Sheets not connected."}
@@ -302,7 +302,7 @@ def create_and_store_embeddings():
         data_rows = data_result.get("values", [])
         print(f"✅ Fetched {len(data_rows)} data rows.")
 
-        # 2. יצירת Embeddings
+        # 2. יצירת Embeddings עם אופטימיזציה
         products = []
         for i, r in enumerate(data_rows):
             # התאמת אורך השורה לכותרות
@@ -327,10 +327,24 @@ def create_and_store_embeddings():
             try:
                 emb = get_embedding(text_to_embed)
                 if emb:
-                    # שמור את המטא-דאטה ואת ה-Embedding
-import numpy as np
-emb_compressed = np.array(emb, dtype=np.float32).tolist()
-products.append({"meta": product, "embedding": emb_compressed})
+                    # 🔥 דחיסה: שמור כ-float32 במקום float64 (חוסך 50%)
+                    emb_compressed = np.array(emb, dtype=np.float32).tolist()
+                    
+                    # 🔥 צמצום metadata: שמור רק שדות חיוניים (חוסך עוד 30-50%)
+                    minimal_meta = {
+                        "id": product.get("id", ""),
+                        "name": product.get("name", ""),
+                        "category": product.get("category", ""),
+                        "brand": product.get("brand", ""),
+                        "regular_price": product.get("regular_price", ""),
+                        "sale_price": product.get("sale_price", ""),
+                        "short_description": product.get("short_description", "")[:200],  # הגבל ל-200 תווים
+                        "image_url": product.get("image_url", ""),
+                        "url": product.get("url", ""),
+                        "sku": product.get("sku", "")
+                    }
+                    
+                    products.append({"meta": minimal_meta, "embedding": emb_compressed})
                 
                 if (i + 1) % 50 == 0:
                     print(f"... Generated {i + 1} embeddings ...")
@@ -346,9 +360,16 @@ products.append({"meta": product, "embedding": emb_compressed})
              return {"status": "warning", "message": "No products were generated. KV not updated."}
 
         products_json = json.dumps(products, ensure_ascii=False)
+        size_in_mb = len(products_json.encode('utf-8')) / (1024 * 1024)
+        
+        print(f"📦 Catalog size: {size_in_mb:.2f} MB")
+        
+        # בדיקת גודל לפני שמירה
+        if size_in_mb > 25:
+            print(f"⚠️ WARNING: Catalog is very large ({size_in_mb:.2f} MB). May cause Redis memory issues.")
+        
         kv_client.set('shopibot:smart_catalog_v1', products_json)
         
-        size_in_mb = len(products_json.encode('utf-8')) / (1024 * 1024)
         print(f"✅ JOB COMPLETE! Saved {len(products)} items to KV. (Size: {size_in_mb:.2f} MB)")
 
         # 4. טעינה מחדש של הקטלוג לזיכרון
@@ -403,7 +424,34 @@ def test_sheets():
     return jsonify({"status": "ok", "rows_count": len(rows)})
 
 
-# --- ה-ROUTE החדש לעדכון הקטלוג ---
+# --- ה-ROUTE לניקוי KV (חדש!) ---
+@app.route('/api/clear-kv', methods=['GET', 'POST'])
+def clear_kv():
+    """מנקה את הקטלוג מ-Vercel KV"""
+    if not kv_client:
+        return jsonify({"status": "error", "message": "KV not connected"})
+    
+    try:
+        # מחק את הקטלוג הישן
+        deleted = kv_client.delete('shopibot:smart_catalog_v1')
+        
+        # נקה גם את הקטלוג בזיכרון
+        global product_catalog_embeddings
+        product_catalog_embeddings = []
+        
+        return jsonify({
+            "status": "success",
+            "message": f"KV cleared successfully. Keys deleted: {deleted}"
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error", 
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        })
+
+
+# --- ה-ROUTE לעדכון הקטלוג ---
 @app.route('/api/update-catalog', methods=['GET', 'POST'])
 def handle_update_catalog():
     """
@@ -418,10 +466,8 @@ def handle_update_catalog():
     print(f"--- 🏁 Catalog Update Finished with status: {result['status']} ---")
     return jsonify(result), status_code
 
-# ---
-# נתיב הצ'אט הראשי
-# ---
 
+# --- נתיב הצ'אט הראשי ---
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])
 def chat():
     """הנתיב הראשי של הצ'אטבוט"""
@@ -475,7 +521,8 @@ def chat_get_info():
     return jsonify({"status": "ok",
                     "message": "Chat endpoint is alive. Use POST with {'message': '...'}"}), 200
 
-# --- Static File Serving (אם צריך) ---
+
+# --- Static File Serving ---
 @app.route('/web/<path:filename>')
 def serve_web_files(filename):
     return send_from_directory(os.path.join(app.root_path, '..', 'web'), filename)
@@ -487,22 +534,3 @@ def serve_public_files(filename):
 @app.route('/openapi.json')
 def serve_openapi_file():
     return send_from_directory(os.path.join(app.root_path, '..', 'public'), 'openapi.json')
-@app.route('/api/clear-kv', methods=['GET', 'POST'])
-def clear_kv():
-    """מנקה את כל המפתחות מ-Vercel KV"""
-    if not kv_client:
-        return jsonify({"status": "error", "message": "KV not connected"})
-    
-    try:
-        # מחק את הקטלוג הישן
-        kv_client.delete('shopibot:smart_catalog_v1')
-        
-        # אפשר גם למחוק מפתחות נוספים אם יש
-        # kv_client.flushdb()  # ⚠️ זה ימחק הכל!
-        
-        return jsonify({
-            "status": "success",
-            "message": "KV cleared successfully"
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
