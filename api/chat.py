@@ -586,6 +586,75 @@ def kv_info():
         })
 
 
+@app.route('/api/inspect-catalog', methods=['GET'])
+def inspect_catalog():
+    """מציג דוגמאות מהקטלוג לבדיקה"""
+    try:
+        # טען מחדש אם צריך
+        if not product_catalog_embeddings:
+            load_smart_catalog()
+        
+        if not product_catalog_embeddings:
+            return jsonify({
+                "status": "error",
+                "message": "Catalog is empty. Run /api/update-catalog first."
+            })
+        
+        # הצג את 10 המוצרים הראשונים
+        sample_products = []
+        for item in product_catalog_embeddings[:10]:
+            meta = item.get('meta', {})
+            sample_products.append({
+                "id": meta.get('id'),
+                "name": meta.get('name'),
+                "category": meta.get('category'),
+                "brand": meta.get('brand'),
+                "price": meta.get('sale_price') or meta.get('regular_price'),
+                "url": meta.get('url'),
+                "has_embedding": len(item.get('embedding', [])) > 0,
+                "embedding_size": len(item.get('embedding', []))
+            })
+        
+        return jsonify({
+            "status": "ok",
+            "total_products": len(product_catalog_embeddings),
+            "sample_products": sample_products,
+            "catalog_loaded_in_memory": True
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        })
+
+
+@app.route('/api/search-test', methods=['GET'])
+def search_test():
+    """בודק חיפוש עם query לדוגמה"""
+    query = request.args.get('q', 'אוכל לחתול')
+    
+    try:
+        # חיפוש חכם
+        results = find_products_by_embedding(query, limit=5)
+        
+        return jsonify({
+            "status": "ok",
+            "query": query,
+            "total_in_catalog": len(product_catalog_embeddings),
+            "results_found": len(results),
+            "results": results
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        })
+
+
 # --- ה-ROUTE לעדכון הקטלוג ---
 @app.route('/api/update-catalog', methods=['GET', 'POST'])
 def handle_update_catalog():
