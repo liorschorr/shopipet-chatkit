@@ -1,387 +1,144 @@
-(function () {
-  const VERCEL_API_BASE = 'https://shopipet-chatkit.vercel.app';
+(() => {
+  // יצירת קונטיינר לצ'אט
+  const container = document.createElement("div");
+  container.id = "shopipet-chat";
+  container.style.position = "fixed";
+  container.style.bottom = "90px";
+  container.style.right = "20px";
+  container.style.width = "380px";
+  container.style.maxHeight = "70vh";
+  container.style.background = "#fff";
+  container.style.borderRadius = "20px";
+  container.style.boxShadow = "0 6px 18px rgba(0,0,0,0.15)";
+  container.style.overflow = "hidden";
+  container.style.display = "none";
+  container.style.zIndex = "999999";
+  container.style.fontFamily = "'Heebo', sans-serif";
+  document.body.appendChild(container);
 
-  const style = document.createElement('style');
-  style.innerHTML = `
-  .shopibot-bubble {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    background: #fbda16;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 8px 24px rgba(0,0,0,.25);
-    z-index: 2147483647;
-  }
-  .shopibot-bubble img {
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-  }
-
-  .shopibot-panel {
-    position: fixed;
-    bottom: 100px;
-    right: 24px;
-    width: 380px;
-    max-width: 95vw;
-    height: 70vh;
-    max-height: 600px;
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 16px 40px rgba(0,0,0,.25);
-    display: none;
-    flex-direction: column;
-    overflow: hidden;
-    z-index: 2147483646;
-  }
-
-  .shopibot-header {
-    padding: 14px;
-    background: #f3e7f1;
-    color: #3b2e3a;
-    font-weight: 600;
-    text-align: center;
-    font-size: 16px;
-    flex-shrink: 0;
-  }
-
-  .shopibot-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px;
-    background: #fafafa;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .shopibot-input {
-    display: flex;
-    gap: 8px;
-    padding: 12px;
-    border-top: 1px solid #ddd;
-    background: #fff;
-    flex-shrink: 0;
-  }
-  .shopibot-input input {
-    flex: 1;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 20px;
-    font-size: 15px;
-  }
-  .shopibot-input button {
-    background: #fbda16;
-    border: none;
-    border-radius: 20px;
-    padding: 10px 18px;
-    font-weight: bold;
-    cursor: pointer;
-  }
-
-  .msg {
-    margin: 6px 0;
-    padding: 10px 14px;
-    border-radius: 18px;
-    max-width: 85%;
-    line-height: 1.4;
-    word-wrap: break-word;
-  }
-  .msg.user {
-    background: #e3ffc4;
-    margin-left: auto;
-  }
-  .msg.bot {
-    background: #fff;
-    border: 1px solid #eee;
-  }
-
-  /* כרטיס מוצר משופר */
-  .prod {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #eee;
-    padding: 12px;
-    border-radius: 10px;
-    margin: 8px 0;
-    background: #fff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    transition: box-shadow 0.2s;
-  }
-  .prod:hover {
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-  }
-  
-  .prod-header {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 10px;
-  }
-  
-  .prod img {
-    width: 80px;
-    height: 80px;
-    object-fit: cover;
-    border-radius: 8px;
-    flex-shrink: 0;
-  }
-  
-  .prod-info {
-    flex: 1;
-    min-width: 0;
-  }
-  
-  .prod-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 4px;
-    line-height: 1.3;
-  }
-  
-  .prod-brand {
-    font-size: 12px;
-    color: #666;
-    margin-bottom: 4px;
-  }
-  
-  .prod-desc {
-    font-size: 13px;
-    color: #555;
-    line-height: 1.4;
-    margin-bottom: 8px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  
-  .prod-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-  
-  .prod-price {
-    font-size: 18px;
-    font-weight: 700;
-    color: #2c7a3f;
-  }
-  
-  .prod-btn {
-    background: #fbda16;
-    border: none;
-    border-radius: 20px;
-    padding: 8px 16px;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    transition: background 0.2s;
-    white-space: nowrap;
-  }
-  .prod-btn:hover {
-    background: #e5c614;
-  }
-  .prod-btn:active {
-    transform: scale(0.98);
-  }
-
-  /* תיקון מלא למובייל */
-  @media (max-width: 600px) {
-    .shopibot-panel {
+  // כפתור הפעלה
+  const toggleBtn = document.createElement("div");
+  toggleBtn.innerHTML = `
+    <div style="
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      width: 100%;
-      height: 100%;
+      bottom: 20px;
+      right: 20px;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: #ffd600;
       display: flex;
-      flex-direction: column;
-      border-radius: 0;
-      background: #fff;
-      z-index: 2147483646;
-    }
-
-    .shopibot-header {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-    }
-
-    .shopibot-body {
-      flex: 1;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    .shopibot-input {
-      position: sticky;
-      bottom: 0;
-      z-index: 2;
-      background: #fff;
-    }
-    
-    .prod img {
-      width: 70px;
-      height: 70px;
-    }
-    
-    .prod-name {
-      font-size: 14px;
-    }
-    
-    .prod-desc {
-      font-size: 12px;
-    }
-  }
-  `;
-  document.head.appendChild(style);
-
-  // bubble
-  const bubble = document.createElement('div');
-  bubble.className = 'shopibot-bubble';
-  bubble.innerHTML = `<img src="https://www.shopipet.co.il/wp-content/uploads/2025/10/shopibot-logo.png" alt="שופיבוט" />`;
-
-  // panel
-  const panel = document.createElement('div');
-  panel.className = 'shopibot-panel';
-  panel.innerHTML = `
-    <div class="shopibot-header">שופיבוט • עזרה לבעלי חיים</div>
-    <div class="shopibot-body" id="shopibot-body"></div>
-    <div class="shopibot-input">
-      <input id="shopibot-input" placeholder="מה אתה מחפש היום?" />
-      <button id="shopibot-send">שלח</button>
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+      cursor: pointer;
+      z-index: 999999;
+    ">
+      <img src="https://cdn-icons-png.flaticon.com/512/616/616408.png" style="width:38px;height:38px;">
     </div>
   `;
-  document.body.appendChild(bubble);
-  document.body.appendChild(panel);
+  document.body.appendChild(toggleBtn);
 
-  function togglePanel(open) {
-    panel.style.display = open ? 'flex' : 'none';
-  }
-
-  bubble.addEventListener('click', () => {
-    const isOpen = panel.style.display === 'flex';
-    togglePanel(!isOpen);
-    if (!isOpen) showWelcome();
+  toggleBtn.addEventListener("click", () => {
+    container.style.display =
+      container.style.display === "none" ? "flex" : "none";
   });
 
-  const body = panel.querySelector('#shopibot-body');
-  const input = panel.querySelector('#shopibot-input');
-  const send = panel.querySelector('#shopibot-send');
+  // מבנה הצ'אט
+  container.innerHTML = `
+    <div style="flex-direction:column;display:flex;width:100%;height:100%;">
+      <div style="background:#f7f1fa;padding:10px;text-align:center;font-weight:600;color:#333;border-bottom:1px solid #eee;">
+        שופיבוט • עזרה לבעלי חיים
+      </div>
+      <div id="chat-body" style="flex:1;padding:10px;overflow-y:auto;direction:rtl;"></div>
+      <div style="border-top:1px solid #eee;padding:10px;display:flex;gap:8px;">
+        <input id="chat-input" type="text" placeholder="מה אתה מחפש היום?" style="flex:1;padding:10px;border-radius:12px;border:1px solid #ccc;font-family:inherit;">
+        <button id="chat-send" style="background:#ffd600;border:none;padding:10px 16px;border-radius:12px;font-weight:600;cursor:pointer;">שלח</button>
+      </div>
+    </div>
+  `;
 
-  function addUser(text) {
-    const el = document.createElement('div');
-    el.className = 'msg user';
-    el.textContent = text;
-    body.appendChild(el);
-    body.scrollTop = body.scrollHeight;
-  }
+  const chatBody = container.querySelector("#chat-body");
+  const input = container.querySelector("#chat-input");
+  const sendBtn = container.querySelector("#chat-send");
 
-  function addBot(text) {
-    const el = document.createElement('div');
-    el.className = 'msg bot';
-    el.textContent = text;
-    body.appendChild(el);
-    body.scrollTop = body.scrollHeight;
-  }
+  const appendMessage = (text, from = "bot") => {
+    const msg = document.createElement("div");
+    msg.style.margin = "8px 0";
+    msg.style.direction = "rtl";
+    msg.style.textAlign = from === "bot" ? "right" : "left";
+    msg.style.background = from === "bot" ? "#f9f9f9" : "#e1ffc7";
+    msg.style.padding = "8px 12px";
+    msg.style.borderRadius = "12px";
+    msg.style.display = "inline-block";
+    msg.style.maxWidth = "90%";
+    msg.innerHTML = text;
+    chatBody.appendChild(msg);
+    chatBody.scrollTop = chatBody.scrollHeight;
+  };
 
-  function addProducts(items) {
-    items.forEach(p => {
-      const card = document.createElement('div');
-      card.className = 'prod';
-      
-      // בניית URL נכון למוצר
-      const productUrl = p.url || `https://dev.shopipet.co.il/?s=${encodeURIComponent(p.name)}`;
-      
+  const appendProducts = (items) => {
+    items.forEach((p) => {
+      const card = document.createElement("div");
+      card.style.border = "1px solid #eee";
+      card.style.borderRadius = "12px";
+      card.style.padding = "10px";
+      card.style.margin = "8px 0";
+      card.style.display = "flex";
+      card.style.gap = "10px";
+      card.style.alignItems = "flex-start";
+      card.style.direction = "rtl";
+
       card.innerHTML = `
-        <div class="prod-header">
-          <img src="${p.image || ''}" alt="${p.name || ''}" onerror="this.src='https://via.placeholder.com/80?text=No+Image'" />
-          <div class="prod-info">
-            <div class="prod-name">${p.name || ''}</div>
-            ${p.brand ? `<div class="prod-brand">${p.brand}</div>` : ''}
-          </div>
-        </div>
-        <div class="prod-desc">${p.description || p.short_description || ''}</div>
-        <div class="prod-footer">
-          <div class="prod-price">${p.price ? '₪' + p.price : 'מחיר לא זמין'}</div>
-          <button class="prod-btn" data-url="${productUrl}">הוספה לסל 🛒</button>
+        <img src="${p.image || "https://via.placeholder.com/80"}" 
+             style="width:80px;height:80px;object-fit:cover;border-radius:10px;flex-shrink:0;">
+        <div style="flex:1">
+          <div style="font-weight:600;color:#333;margin-bottom:4px;">${p.name}</div>
+          <div style="font-size:13px;color:#555;margin-bottom:6px;">${p.description || ""}</div>
+          <div style="font-weight:600;margin-bottom:6px;">₪${p.price || ""}</div>
+          ${
+            p.has_variants
+              ? `<a href="${p.url}" target="_blank"
+                   style="background:#fff;border:1px solid #ccc;border-radius:8px;padding:6px 10px;font-size:13px;text-decoration:none;color:#333;">
+                   בחר אפשרויות
+                 </a>`
+              : `<a href="${p.add_to_cart_url}" target="_blank"
+                   style="background:#ffd600;border:none;border-radius:8px;padding:6px 10px;font-size:13px;text-decoration:none;color:#000;font-weight:600;">
+                   הוסף לסל
+                 </a>`
+          }
         </div>
       `;
-      
-      // כפתור הוספה לסל - פותח את דף המוצר בטאב חדש
-      const btn = card.querySelector('.prod-btn');
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        window.open(productUrl, '_blank');
-      });
-      
-      body.appendChild(card);
+      chatBody.appendChild(card);
     });
-    body.scrollTop = body.scrollHeight;
-  }
+    chatBody.scrollTop = chatBody.scrollHeight;
+  };
 
-  function showWelcome() {
-    body.innerHTML = '';
-    addBot('שלום! אני שופיבוט 🐶 איך אפשר לעזור היום?');
-  }
+  const sendMessage = async () => {
+    const text = input.value.trim();
+    if (!text) return;
+    appendMessage(text, "user");
+    input.value = "";
+    appendMessage("⏳ מחפש מוצרים...");
 
-  async function ask(q) {
-    addUser(q);
-    addBot('מחפש בשבילך...');
     try {
-      const res = await fetch(VERCEL_API_BASE + '/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: q, limit: 5 })
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
       });
       const data = await res.json();
-      body.lastChild.remove(); // remove "מחפש בשבילך..."
-      
-      // הצג את התשובה מ-OpenAI
-      if (data.message) {
-        addBot(data.message);
-      }
-      
-      // הצג מוצרים אם יש
-      if (data.items && data.items.length > 0) {
-        addProducts(data.items);
-      } else if (!data.message || data.message.includes('לא מצאתי')) {
-        addBot('לא מצאתי מוצרים מתאימים 😔 נסה לנסח את החיפוש אחרת או שאל אותי משהו נוסף!');
-      }
+      chatBody.removeChild(chatBody.lastChild);
+      appendMessage(data.message || "לא התקבלה תשובה.");
+      if (data.items && data.items.length) appendProducts(data.items);
     } catch (err) {
-      console.error('Error:', err);
-      body.lastChild.remove();
-      addBot('הייתה בעיה זמנית. נסה שוב מאוחר יותר.');
+      appendMessage("❌ שגיאה בשרת, נסה שוב מאוחר יותר.");
+      console.error(err);
     }
-  }
+  };
 
-  send.addEventListener('click', () => {
-    const q = input.value.trim();
-    if (!q) return;
-    input.value = '';
-    ask(q);
-  });
-
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') send.click();
-  });
-
-  // גלילה אוטומטית כמו בוואטסאפ
-  input.addEventListener('focus', () => {
-    setTimeout(() => {
-      body.scrollTop = body.scrollHeight;
-    }, 300);
-  });
-  input.addEventListener('blur', () => {
-    setTimeout(() => {
-      body.scrollTop = body.scrollHeight;
-    }, 300);
+  sendBtn.addEventListener("click", sendMessage);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendMessage();
   });
 })();
