@@ -328,7 +328,9 @@ def create_and_store_embeddings():
                 emb = get_embedding(text_to_embed)
                 if emb:
                     # שמור את המטא-דאטה ואת ה-Embedding
-                    products.append({"meta": product, "embedding": emb})
+import numpy as np
+emb_compressed = np.array(emb, dtype=np.float32).tolist()
+products.append({"meta": product, "embedding": emb_compressed})
                 
                 if (i + 1) % 50 == 0:
                     print(f"... Generated {i + 1} embeddings ...")
