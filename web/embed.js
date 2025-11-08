@@ -1,4 +1,4 @@
-(() => {
+ (() => {
   // בסיס ה-API של האתר שלך (לא של Vercel)
   const API_BASE = "https://dev.shopipet.co.il";
 
