@@ -1,5 +1,8 @@
 {
   "version": 2,
+  "routes": [
+    { "src": "/(.*)", "dest": "/api/chat.py" }
+  ],
   "crons": [
     {
       "path": "/api/update-catalog",
