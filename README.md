@@ -3,7 +3,7 @@
 This project gives you a production-ready API and a minimal floating web chat to run on **shopipet.co.il**.
 - **Backend**: FastAPI on Vercel
 - **Data**: Google Sheets (ID: `1-XfEIXT0ovbhkWnBezc4v2xIcmUdONC7mAcep9554q8`)
-- **LLM**: OpenAI (ChatGPT) via `OPENAI_API_KEY`
+- **LLM**: OpenAI (ChatGPT) via `OPENAI_API_KEY`     
 - **Frontend**: simple chat bubble for WooCommerce (or swap with ChatKit widget)
 
 ## 1) Deploy to Vercel
