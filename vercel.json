@@ -1,6 +1,10 @@
 {
   "version": 2,
   "routes": [
+    { "src": "/api/update-catalog", "dest": "/api/chat.py" },
+    { "src": "/api/ping", "dest": "/api/chat.py" },
+    { "src": "/api/chat", "dest": "/api/chat.py" },
+    { "src": "/api/(.*)", "dest": "/api/chat.py" },
     { "src": "/(.*)", "dest": "/api/chat.py" }
   ],
   "crons": [
