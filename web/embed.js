@@ -1,3 +1,4 @@
+<script>
 (function () {
   const VERCEL_API_BASE = 'https://shopipet-chatkit.vercel.app';
 
@@ -48,6 +49,7 @@
     font-weight: 600;
     text-align: center;
     font-size: 16px;
+    flex-shrink: 0;
   }
 
   .shopibot-body {
@@ -55,6 +57,7 @@
     overflow-y: auto;
     padding: 12px;
     background: #fafafa;
+    -webkit-overflow-scrolling: touch;
   }
 
   .shopibot-input {
@@ -63,6 +66,7 @@
     padding: 12px;
     border-top: 1px solid #ddd;
     background: #fff;
+    flex-shrink: 0;
   }
   .shopibot-input input {
     flex: 1;
@@ -123,15 +127,40 @@
     color: #333;
   }
 
+  /* תיקון מלא למובייל */
   @media (max-width: 600px) {
     .shopibot-panel {
-      right: 0;
+      position: fixed;
+      top: 0;
       left: 0;
+      right: 0;
       bottom: 0;
       width: 100%;
       height: 100%;
-      max-height: none;
+      display: flex;
+      flex-direction: column;
       border-radius: 0;
+      background: #fff;
+      z-index: 2147483646;
+    }
+
+    .shopibot-header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .shopibot-body {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .shopibot-input {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      background: #fff;
     }
   }
   `;
@@ -240,4 +269,17 @@
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') send.click();
   });
+
+  // גלילה אוטומטית כמו בוואטסאפ
+  input.addEventListener('focus', () => {
+    setTimeout(() => {
+      body.scrollTop = body.scrollHeight;
+    }, 300);
+  });
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      body.scrollTop = body.scrollHeight;
+    }, 300);
+  });
 })();
+</script>
