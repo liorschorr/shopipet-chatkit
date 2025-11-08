@@ -1,14 +1,8 @@
 {
   "version": 2,
-  "builds": [
-    { "src": "api/index.py", "use": "@vercel/python" }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "/api/index.py" }
-  ],
   "crons": [
     {
-      "path": "/api/update-catalog",
+      "path": "/api/update_catalog",
       "schedule": "0 3 * * *"
     }
   ]
