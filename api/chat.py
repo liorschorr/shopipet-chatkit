@@ -485,3 +485,22 @@ def serve_public_files(filename):
 @app.route('/openapi.json')
 def serve_openapi_file():
     return send_from_directory(os.path.join(app.root_path, '..', 'public'), 'openapi.json')
+@app.route('/api/clear-kv', methods=['GET', 'POST'])
+def clear_kv():
+    """מנקה את כל המפתחות מ-Vercel KV"""
+    if not kv_client:
+        return jsonify({"status": "error", "message": "KV not connected"})
+    
+    try:
+        # מחק את הקטלוג הישן
+        kv_client.delete('shopibot:smart_catalog_v1')
+        
+        # אפשר גם למחוק מפתחות נוספים אם יש
+        # kv_client.flushdb()  # ⚠️ זה ימחק הכל!
+        
+        return jsonify({
+            "status": "success",
+            "message": "KV cleared successfully"
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
