@@ -1,6 +1,6 @@
  (() => {
   // בסיס ה-API של האתר שלך (לא של Vercel)
-  const API_BASE = "https://dev.shopipet.co.il";
+const API_BASE = "";
 
   // שומר גם את דומיין האתר שבו נטען הווידג'ט (לשימוש פנימי)
   const ORIGIN = window.location.origin.replace(/\/$/, ""); // dev או www לפי האתר
