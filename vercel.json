@@ -19,9 +19,7 @@
     { "src": "/web/(.*)", "dest": "web/$1" },
     { "src": "/public/(.*)", "dest": "public/$1" },
     { "src": "/", "dest": "web/embed.js" }
-  ]
-}
-{
+  ],
   "headers": [
     {
       "source": "/web/embed.js",
