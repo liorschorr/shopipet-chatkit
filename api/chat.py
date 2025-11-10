@@ -241,8 +241,10 @@ def serve_web(filename):
 @app.route("/public/<path:filename>")
 def serve_public(filename):
     return send_from_directory(os.path.join(app.root_path, "..", "public"), filename)
-@app.route("/api/update-catalog", methods=["POST"])
+
+@app.route("/api/update-catalog", methods=["GET", "POST"])
 def update_catalog():
+
     """
     מקבל JSON עם קטלוג מעודכן ושומר אותו בזיכרון וגם ב-Redis (אם מוגדר KV_URL)
     """
