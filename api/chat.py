@@ -241,6 +241,39 @@ def serve_web(filename):
 @app.route("/public/<path:filename>")
 def serve_public(filename):
     return send_from_directory(os.path.join(app.root_path, "..", "public"), filename)
+@app.route("/api/update-catalog", methods=["POST"])
+def update_catalog():
+    """
+    מקבל JSON עם קטלוג מעודכן ושומר אותו בזיכרון וגם ב-Redis (אם מוגדר KV_URL)
+    """
+    global product_catalog_embeddings
+    try:
+        data = request.get_json(force=True)
+        if not data or "items" not in data:
+            return jsonify({"error": "Missing 'items' key"}), 400
+
+        items = data["items"]
+        for item in items:
+            emb = np.array(item["embedding"], dtype=np.float32)
+            item["embedding_np"] = emb
+
+        product_catalog_embeddings = items
+        print(f"✅ Catalog updated: {len(items)} items in memory.")
+
+        if KV_URL:
+            r = redis.from_url(KV_URL)
+            r.set("shopipet_catalog_embeddings", json.dumps(items, ensure_ascii=False))
+            print("✅ Saved to Redis")
+
+        return jsonify({
+            "status": "ok",
+            "message": f"Catalog updated with {len(items)} items",
+            "stored_in": "Redis" if KV_URL else "Memory only"
+        })
+    except Exception as e:
+        print("❌ /api/update-catalog error:", e)
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
