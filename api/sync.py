@@ -1,86 +1,118 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import os
-from openai import OpenAI
-from woocommerce import API
-
-# אתחול
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID")
+import traceback # ספרייה שעוזרת להציג את השגיאה המלאה
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        try:
-            # בדיקה מקדימה
-            if not ASSISTANT_ID:
-                self.send_response(500)
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Missing OPENAI_ASSISTANT_ID"}).encode('utf-8'))
-                return
+        # כותרות בסיסיות כדי שהדפדפן תמיד יציג את התשובה
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
 
-            # 1. משיכת מוצרים
+        response_data = {}
+
+        try:
+            # --- שלב 1: בדיקת ספריות (Imports) ---
+            try:
+                from openai import OpenAI
+                from woocommerce import API
+            except ImportError as e:
+                raise Exception(f"Library missing: {str(e)}. Did you install requirements.txt?")
+
+            # --- שלב 2: בדיקת משתני סביבה ---
+            required_vars = [
+                "OPENAI_API_KEY", 
+                "OPENAI_ASSISTANT_ID", 
+                "WOO_BASE_URL", 
+                "WOO_CONSUMER_KEY", 
+                "WOO_CONSUMER_SECRET"
+            ]
+            
+            missing = [var for var in required_vars if not os.environ.get(var)]
+            if missing:
+                raise Exception(f"Missing Environment Variables: {', '.join(missing)}")
+
+            # --- שלב 3: התחברות ל-WooCommerce ---
             wcapi = API(
                 url=os.environ.get("WOO_BASE_URL"),
                 consumer_key=os.environ.get("WOO_CONSUMER_KEY"),
                 consumer_secret=os.environ.get("WOO_CONSUMER_SECRET"),
                 version="wc/v3",
-                timeout=60
+                timeout=30
             )
             
-            # מושך 200 מוצרים
-            products = wcapi.get("products", params={"per_page": 200, "status": "publish"}).json()
+            # בדיקת תקשורת מינימלית
+            products = wcapi.get("products", params={"per_page": 50, "status": "publish"}).json()
             
+            # בדיקה אם התגובה היא בכלל רשימה (ולא שגיאה של ווקומרס)
+            if isinstance(products, dict) and "message" in products:
+                raise Exception(f"WooCommerce Error: {products['message']}")
+                
             if not products:
-                self.send_response(200)
-                self.wfile.write(json.dumps({"status": "error", "msg": "No products found"}).encode('utf-8'))
+                response_data = {"status": "warning", "msg": "Connected to Woo, but found 0 products."}
+                self.wfile.write(json.dumps(response_data).encode('utf-8'))
                 return
 
-            # 2. יצירת תוכן
+            # --- שלב 4: הכנת הקובץ ---
             content = ""
             for p in products:
-                price = p['sale_price'] if p['on_sale'] else p['regular_price']
-                stock = "במלאי" if p['stock_status'] == 'instock' else "חסר"
-                desc = str(p['short_description']).replace('<p>','').replace('</p>','')
-                
-                content += f"מוצר: {p['name']}\nמחיר: {price} שח\nמלאי: {stock}\nתיאור: {desc}\nקישור: {p['permalink']}\nתמונה: {p['images'][0]['src'] if p['images'] else ''}\n\n"
+                # הגנה מפני שדות חסרים
+                name = p.get('name', 'Unknown')
+                price = p.get('price', '0')
+                link = p.get('permalink', '')
+                content += f"מוצר: {name}\nמחיר: {price}\nקישור: {link}\n\n"
             
-            # שמירה זמנית
+            # שמירה לתיקיית TMP (המקום היחיד שמותר לכתוב בו ב-Vercel)
             file_path = "/tmp/catalog.txt"
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
+
+            # --- שלב 5: שליחה ל-OpenAI ---
+            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+            assistant_id = os.environ.get("OPENAI_ASSISTANT_ID")
             
-            # 3. העלאה ל-OpenAI Agent
-            my_assistant = client.beta.assistants.retrieve(ASSISTANT_ID)
+            # שליפת ה-Assistant כדי לקבל את ה-Vector Store
+            my_assistant = client.beta.assistants.retrieve(assistant_id)
             tool_res = my_assistant.tool_resources
-            vs_id = None
             
+            vs_id = None
             if tool_res and tool_res.file_search and tool_res.file_search.vector_store_ids:
                 vs_id = tool_res.file_search.vector_store_ids[0]
             else:
+                # יצירה אם אין
                 vs = client.beta.vector_stores.create(name="ShopiPet Store")
                 vs_id = vs.id
                 client.beta.assistants.update(
-                    assistant_id=ASSISTANT_ID,
+                    assistant_id=assistant_id,
                     tool_resources={"file_search": {"vector_store_ids": [vs_id]}}
                 )
 
+            # העלאה
             with open(file_path, "rb") as f:
                 client.beta.vector_stores.files.upload_and_poll(
                     vector_store_id=vs_id,
                     file=f
                 )
 
-            self.send_response(200)
-            self.end_headers()
-            
+            # --- סיום מוצלח ---
             response_data = {
-                "status": "success",
-                "items_count": len(products),
-                "version": "1.0 - LATEST CODE (OpenAI Agent - Underscore Version)" 
+                "status": "success", 
+                "message": "Process Completed Successfully",
+                "products_found": len(products),
+                "openai_vector_store": vs_id
             }
-            self.wfile.write(json.dumps(response_data).encode('utf-8'))
 
         except Exception as e:
-            self.send_response(500)
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+            # --- תפיסת כל שגיאה אפשרית ---
+            # כאן אנחנו תופסים את הקריסה ומדפיסים אותה למסך במקום לקבל 500
+            error_details = traceback.format_exc()
+            print(f"CRITICAL ERROR: {error_details}") # ללוגים
+            response_data = {
+                "status": "error",
+                "error_message": str(e),
+                "traceback": error_details # הדפסה מלאה של איפה הקוד נפל
+            }
+
+        # כתיבת התשובה הסופית (JSON) לדפדפן
+        self.wfile.write(json.dumps(response_data).encode('utf-8'))
