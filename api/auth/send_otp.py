@@ -6,7 +6,9 @@ import redis
 import requests
 from utils.cors import cors_headers
 
-r = redis.from_url(os.environ.get("KV_URL"))
+# שינוי: שימוש ב-REDIS URL שלך
+redis_url = os.environ.get("shopipetbot_REDIS_URL")
+r = redis.from_url(redis_url, ssl_cert_reqs=None)
 
 def normalize_phone_il(phone):
     clean = ''.join(filter(str.isdigit, phone))
@@ -34,10 +36,8 @@ class handler(BaseHTTPRequestHandler):
             phone_formatted = normalize_phone_il(phone_input)
             otp_code = str(random.randint(10000, 99999))
             
-            # שמירה ב-Redis ל-5 דקות
             r.setex(f"otp:{phone_input}", 300, otp_code)
 
-            # שליחה ל-Flashy
             url = "https://flashyapp.com/api/2.0/sms/send"
             payload = {
                 "token": os.environ.get("FLASHY_API_KEY"),
