@@ -1,5 +1,4 @@
 openai
-redis
 requests
 numpy
 woocommerce
