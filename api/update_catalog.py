@@ -21,45 +21,38 @@ class handler(BaseHTTPRequestHandler):
             page = 1
             
             while True:
-                # משיכת מוצרים בפייג'ינג (100 בכל פעם)
                 products = wcapi.get("products", params={"per_page": 100, "page": page}).json()
                 if not products:
                     break
                 
                 for p in products:
-                    # דילוג על מוצרים לא מפורסמים
                     if p['status'] != 'publish':
                         continue
 
-                    # -- בניית המידע העשיר --
-                    
-                    # 1. מחיר ומבצע
+                    # עיבוד מחיר ומבצע
                     price_str = f"{p['price']} ₪"
                     if p['on_sale']:
                         price_str = f"מבצע: {p['sale_price']} ₪ (במקום {p['regular_price']} ₪)"
 
-                    # 2. מלאי
+                    # עיבוד מלאי
                     stock_str = "במלאי" if p['stock_status'] == 'instock' else "חסר במלאי"
 
-                    # 3. טיפול בוריאציות (למשל: משקל)
+                    # עיבוד וריאציות
                     variations_str = ""
                     if p['type'] == 'variable':
-                        # בונים מחרוזת של האפשרויות, למשל: "משקלים זמינים: 3קג, 12קג"
                         attrs = []
                         for attr in p['attributes']:
                             options = ", ".join(attr['options'])
                             attrs.append(f"{attr['name']}: {options}")
                         variations_str = " | אפשרויות: " + " ; ".join(attrs)
 
-                    # 4. תגיות וקטגוריות
+                    # תגיות וקטגוריות
                     cats = ", ".join([c['name'] for c in p['categories']])
                     tags = ", ".join([t['name'] for t in p['tags']])
                     
-                    # 5. ניקוי HTML מהתיאור
                     clean_desc = p['short_description'].replace('<p>', '').replace('</p>', '')
 
-                    # יצירת הטקסט המלא ל-Embedding (מה שה-AI יקרא)
-                    # אנו בונים זאת כטקסט טבעי כדי שהמודל יבין את ההקשר
+                    # הטקסט המלא ל-AI
                     text_to_embed = (
                         f"מוצר: {p['name']}.\n"
                         f"קטגוריה: {cats}.\n"
@@ -70,21 +63,19 @@ class handler(BaseHTTPRequestHandler):
                         f"תגיות: {tags}."
                     )
 
-                    # יצירת מטא-דאטה (מה שנחזיר לצ'אט כדי להציג קישור/תמונה)
                     item = {
                         "id": p['id'],
                         "name": p['name'],
                         "price": p['price'],
                         "link": p['permalink'],
                         "image": p['images'][0]['src'] if p['images'] else "",
-                        "embedding": get_embedding(text_to_embed), # קריאה ל-OpenAI
-                        "raw_text": text_to_embed # שומרים את הטקסט הגולמי לשימוש בקונטקסט
+                        "embedding": get_embedding(text_to_embed),
+                        "raw_text": text_to_embed
                     }
                     processed_catalog.append(item)
 
                 page += 1
 
-            # שמירה ב-Redis
             save_catalog(processed_catalog)
             
             self.send_response(200)
