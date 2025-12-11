@@ -8,28 +8,37 @@ from utils.db import save_catalog
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            # שינוי: שימוש בשמות המשתנים הקיימים אצלך
+            # הגדרה: כמה מוצרים למשוך בריצה הזו? (5 לבדיקה מהירה)
+            MAX_PRODUCTS_TO_PROCESS = 5 
+            
             wcapi = API(
                 url=os.environ.get("WOO_BASE_URL"),
                 consumer_key=os.environ.get("WOO_CONSUMER_KEY"),
                 consumer_secret=os.environ.get("WOO_CONSUMER_SECRET"),
                 version="wc/v3",
-                timeout=50
+                timeout=20 
             )
 
             processed_catalog = []
             page = 1
             
-            while True:
-                products = wcapi.get("products", params={"per_page": 100, "page": page}).json()
+            # לולאה ראשית
+            while len(processed_catalog) < MAX_PRODUCTS_TO_PROCESS:
+                # מושכים רק 10 מוצרים בכל קריאה כדי לא להעמיס
+                products = wcapi.get("products", params={"per_page": 10, "page": page}).json()
+                
                 if not products:
                     break
                 
                 for p in products:
+                    # אם הגענו למכסה - עוצרים מיד
+                    if len(processed_catalog) >= MAX_PRODUCTS_TO_PROCESS:
+                        break
+
                     if p['status'] != 'publish':
                         continue
 
-                    # עיבוד מחיר
+                    # עיבוד נתונים
                     price_str = f"{p['price']} ₪"
                     if p['on_sale']:
                         price_str = f"מבצע: {p['sale_price']} ₪ (במקום {p['regular_price']} ₪)"
@@ -68,14 +77,20 @@ class handler(BaseHTTPRequestHandler):
                         "raw_text": text_to_embed
                     }
                     processed_catalog.append(item)
-
+                
                 page += 1
 
+            # שמירה ל-Redis
             save_catalog(processed_catalog)
             
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(json.dumps({"status": "success", "items": len(processed_catalog)}).encode('utf-8'))
+            success_msg = {
+                "status": "success", 
+                "message": "TEST MODE: Processed first 5 items only",
+                "items_count": len(processed_catalog)
+            }
+            self.wfile.write(json.dumps(success_msg).encode('utf-8'))
 
         except Exception as e:
             self.send_response(500)
