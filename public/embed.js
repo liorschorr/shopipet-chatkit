@@ -10,7 +10,9 @@
             display: flex; align-items: center; justify-content: center; 
             color: black; font-size: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
             z-index: 2147483647;
+            transition: transform 0.2s;
         }
+        #shopipet-bubble:active { transform: scale(0.9); }
         
         #shopipet-window { 
             position: fixed; bottom: 90px; right: 20px; width: 350px; height: 500px; 
@@ -82,20 +84,18 @@
         @media (max-width: 600px) {
             #shopipet-window {
                 width: 100% !important;
-                height: 80% !important; /* גובה 80% כדי שיראו את האתר */
+                height: 80% !important; /* מגירה שנפתחת לגובה 80% */
                 bottom: 0 !important;
                 right: 0 !important;
                 left: 0 !important;
-                top: auto !important; /* מבטל הצמדה למעלה */
+                top: auto !important;
                 border-bottom-left-radius: 0 !important;
                 border-bottom-right-radius: 0 !important;
-                border-top-left-radius: 16px !important; /* פינות עגולות למעלה */
+                border-top-left-radius: 16px !important;
                 border-top-right-radius: 16px !important;
-                box-shadow: 0 -5px 20px rgba(0,0,0,0.2) !important; /* צללית כלפי מעלה */
+                box-shadow: 0 -5px 20px rgba(0,0,0,0.2) !important;
             }
-            #shopipet-bubble {
-                display: none !important; /* מסתירים את הבועה כשהצ'אט פתוח במובייל */
-            }
+            /* תיקון: מחקנו את השורה שהסתירה את הבועה כאן */
         }
     `;
     document.head.appendChild(style);
@@ -131,28 +131,31 @@
         const isHidden = win.style.display === 'none' || win.style.display === '';
         
         if (isHidden) {
-            // פתיחה
+            // -- פתיחה --
             win.style.display = 'flex';
             overlay.style.display = 'block';
+            
+            // במובייל בלבד: נסתיר את הבועה כשהצ'אט פתוח
             if (window.innerWidth <= 600) {
-                document.body.style.overflow = 'hidden'; // מונע גלילה של האתר ברקע
-                bubble.style.display = 'none'; // הסתרת הבועה
+                document.body.style.overflow = 'hidden'; // מונע גלילה של האתר
+                bubble.style.display = 'none';
             }
-            // פוקוס על שדה הקלט
+            
+            // פוקוס על שדה הקלט (רק בדסקטופ, במובייל זה מקפיץ מקלדת)
             if (window.innerWidth > 600) {
                 setTimeout(() => document.getElementById('shopipet-input').focus(), 100);
             }
         } else {
-            // סגירה
+            // -- סגירה --
             win.style.display = 'none';
             overlay.style.display = 'none';
-            document.body.style.overflow = ''; // החזרת גלילה
-            bubble.style.display = 'flex'; // החזרת הבועה
+            document.body.style.overflow = ''; 
+            bubble.style.display = 'flex'; // מחזירים את הבועה
         }
     };
 
     bubble.onclick = toggleChat;
-    overlay.onclick = toggleChat; // סגירה בלחיצה על הרקע החשוך
+    overlay.onclick = toggleChat;
     document.getElementById('shopipet-close').onclick = toggleChat;
 
     async function sendMessage() {
