@@ -1,6 +1,6 @@
 (function() {
-    const API_BASE = "https://YOUR_PROJECT.vercel.app/api"; // לעדכן לאחר פריסה
-
+// שים לב: הכתובת בשורה נפרדת וללא רווחים
+const API_BASE = "https://shopipet-chatkit.vercel.app/api";
     const style = document.createElement('style');
     style.innerHTML = `
         #shopipet-bubble { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; background: #0070f3; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; color: white; font-size: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 9999; }
