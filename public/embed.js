@@ -9,7 +9,7 @@
             background: #eab308; border-radius: 50%; cursor: pointer; 
             display: flex; align-items: center; justify-content: center; 
             color: black; font-size: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
-            z-index: 2147483647; /* המספר הכי גבוה האפשרי כדי להיות מעל הכל */
+            z-index: 2147483647;
         }
         
         #shopipet-window { 
@@ -25,28 +25,30 @@
         #shopipet-header { 
             background: #eab308; color: black; padding: 15px; font-weight: bold; font-size: 18px; 
             display: flex; justify-content: space-between; align-items: center; 
-            flex-shrink: 0; /* מונע כיווץ */
+            flex-shrink: 0; 
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         #shopipet-close { cursor: pointer; font-size: 24px; padding: 0 5px; }
         
         /* --- אזור הודעות נגלל --- */
         #shopipet-messages { 
-            flex: 1; /* לוקח את כל המקום הפנוי */
+            flex: 1; 
             padding: 15px; overflow-y: auto; background: #f9f9f9; 
-            -webkit-overflow-scrolling: touch; /* גלילה חלקה במובייל */
+            -webkit-overflow-scrolling: touch; 
         }
 
         /* --- אזור הקלדה דביק למטה --- */
         #shopipet-input-area { 
             padding: 10px; border-top: 1px solid #eee; display: flex; background: white; 
-            flex-shrink: 0; /* מונע כיווץ */
+            flex-shrink: 0; 
             align-items: center;
+            /* התאמה לאייפון - אזור בטוח למטה */
+            padding-bottom: env(safe-area-inset-bottom, 10px);
         }
         
         #shopipet-input { 
             flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 20px; outline: none; 
-            font-size: 16px; /* חשוב מאוד! מונע זום באייפון */
+            font-size: 16px; /* מונע זום באייפון */
         }
         
         #shopipet-send { 
@@ -69,23 +71,37 @@
         .product-price { color: #eab308; font-weight: bold; font-size: 14px; }
         .product-btn { background: #000; color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 4px; margin-right: auto; white-space: nowrap; }
 
+        /* --- מסך חשוך ברקע (Overlay) --- */
+        #shopipet-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 2147483646;
+            display: none;
+        }
+
         /* --- התאמה למובייל (עד 600px) --- */
         @media (max-width: 600px) {
             #shopipet-window {
                 width: 100% !important;
-                height: 100% !important;
+                height: 80% !important; /* גובה 80% כדי שיראו את האתר */
                 bottom: 0 !important;
                 right: 0 !important;
-                top: 0 !important;
-                border-radius: 0 !important;
+                left: 0 !important;
+                top: auto !important; /* מבטל הצמדה למעלה */
+                border-bottom-left-radius: 0 !important;
+                border-bottom-right-radius: 0 !important;
+                border-top-left-radius: 16px !important; /* פינות עגולות למעלה */
+                border-top-right-radius: 16px !important;
+                box-shadow: 0 -5px 20px rgba(0,0,0,0.2) !important; /* צללית כלפי מעלה */
             }
             #shopipet-bubble {
-                bottom: 15px;
-                right: 15px;
+                display: none !important; /* מסתירים את הבועה כשהצ'אט פתוח במובייל */
             }
         }
     `;
     document.head.appendChild(style);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'shopipet-overlay';
 
     const bubble = document.createElement('div');
     bubble.id = 'shopipet-bubble';
@@ -105,6 +121,7 @@
         </div>
     `;
 
+    document.body.appendChild(overlay);
     document.body.appendChild(bubble);
     document.body.appendChild(win);
 
@@ -112,22 +129,30 @@
     
     const toggleChat = () => {
         const isHidden = win.style.display === 'none' || win.style.display === '';
-        win.style.display = isHidden ? 'flex' : 'none';
         
-        // בגלילה למובייל - מניעת גלילה של דף הרקע
-        if (window.innerWidth <= 600) {
-            document.body.style.overflow = isHidden ? 'hidden' : '';
-        }
-
         if (isHidden) {
-            // המתנה קלה לפתיחת האנימציה ואז פוקוס (במובייל לפעמים עדיף בלי פוקוס אוטומטי כדי לא להקפיץ מקלדת מיד)
+            // פתיחה
+            win.style.display = 'flex';
+            overlay.style.display = 'block';
+            if (window.innerWidth <= 600) {
+                document.body.style.overflow = 'hidden'; // מונע גלילה של האתר ברקע
+                bubble.style.display = 'none'; // הסתרת הבועה
+            }
+            // פוקוס על שדה הקלט
             if (window.innerWidth > 600) {
                 setTimeout(() => document.getElementById('shopipet-input').focus(), 100);
             }
+        } else {
+            // סגירה
+            win.style.display = 'none';
+            overlay.style.display = 'none';
+            document.body.style.overflow = ''; // החזרת גלילה
+            bubble.style.display = 'flex'; // החזרת הבועה
         }
     };
 
     bubble.onclick = toggleChat;
+    overlay.onclick = toggleChat; // סגירה בלחיצה על הרקע החשוך
     document.getElementById('shopipet-close').onclick = toggleChat;
 
     async function sendMessage() {
@@ -173,7 +198,6 @@
         }
         
         input.disabled = false;
-        // במובייל אנו רוצים להשאיר את המקלדת פתוחה, לכן מחזירים פוקוס
         input.focus();
     }
 
