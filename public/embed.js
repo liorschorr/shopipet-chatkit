@@ -1,5 +1,7 @@
 (function() {
+    // ⚠️ חשוב: וודא שזו הכתובת הראשית והנכונה של הפרויקט שלך ב-Vercel
     const API_BASE = "https://shopipet-chatkit.vercel.app/api"; 
+    const STORAGE_KEY = 'shopibot_thread_id'; // מפתח לשמירת השיחה בדפדפן
 
     const style = document.createElement('style');
     style.innerHTML = `
@@ -95,7 +97,7 @@
                 border-top-right-radius: 16px !important;
                 box-shadow: 0 -5px 20px rgba(0,0,0,0.2) !important;
             }
-            /* תיקון: מחקנו את השורה שהסתירה את הבועה כאן */
+            /* הבועה מוסתרת רק כשהצ'אט פתוח (מטופל ב-JS) */
         }
     `;
     document.head.appendChild(style);
@@ -125,7 +127,8 @@
     document.body.appendChild(bubble);
     document.body.appendChild(win);
 
-    let history = [];
+    // ניהול היסטוריה מקומית (אופציונלי לממשק) - ה-Agent מנהל את הזיכרון האמיתי
+    let history = []; 
     
     const toggleChat = () => {
         const isHidden = win.style.display === 'none' || win.style.display === '';
@@ -141,7 +144,7 @@
                 bubble.style.display = 'none';
             }
             
-            // פוקוס על שדה הקלט (רק בדסקטופ, במובייל זה מקפיץ מקלדת)
+            // פוקוס על שדה הקלט (רק בדסקטופ)
             if (window.innerWidth > 600) {
                 setTimeout(() => document.getElementById('shopipet-input').focus(), 100);
             }
@@ -167,31 +170,42 @@
         input.value = '';
         input.disabled = true;
 
+        // שליפת ה-Thread ID מהזיכרון של הדפדפן (אם קיים)
+        const storedThreadId = localStorage.getItem(STORAGE_KEY);
+
         try {
             const res = await fetch(`${API_BASE}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, history: history })
+                body: JSON.stringify({ 
+                    message: text, 
+                    thread_id: storedThreadId // שולחים את המזהה כדי להמשיך שיחה
+                })
             });
 
             if (!res.ok) throw new Error(`Server error: ${res.status}`);
 
             const data = await res.json();
             
-            if (data.message) {
-                addMessage(data.message, 'bot');
-                history.push({ role: 'user', content: text });
-                history.push({ role: 'assistant', content: data.message });
-            } else if (data.reply) {
-                addMessage(data.reply, 'bot');
+            // 1. שמירת ה-Thread ID החדש (אם נוצר)
+            if (data.thread_id) {
+                localStorage.setItem(STORAGE_KEY, data.thread_id);
             }
 
+            // 2. הצגת הודעת הבוט (Agent)
+            if (data.message || data.reply) {
+                const replyText = data.message || data.reply;
+                addMessage(replyText, 'bot');
+            }
+
+            // 3. הצגת כרטיסי מוצר (אם ה-Backend שלח כאלה)
             if (data.items && Array.isArray(data.items) && data.items.length > 0) {
                 data.items.forEach(item => {
                     addProductCard(item);
                 });
             }
 
+            // 4. טיפול בשגיאות
             if (data.error) {
                 addMessage(`שגיאה: ${data.error}`, 'error');
             }
@@ -207,7 +221,12 @@
     function addMessage(text, sender) {
         const div = document.createElement('div');
         div.className = `msg ${sender}`;
-        div.innerHTML = text.replace(/\n/g, '<br>');
+        // המרת סימני Markdown בסיסיים אם ה-Agent שולח אותם
+        let formattedText = text.replace(/\n/g, '<br>');
+        // הסרת הערות שוליים אם נשארו
+        formattedText = formattedText.replace(/【.*?】/g, '');
+        
+        div.innerHTML = formattedText;
         const container = document.getElementById('shopipet-messages');
         container.appendChild(div);
         scrollToBottom();
