@@ -1,13 +1,12 @@
-
 import os
 import redis
 import json
 
-# Connect to Vercel KV (Redis)
+# Connect to Vercel KV
 r = redis.from_url(os.environ.get("KV_URL"))
 
 def save_catalog(data):
-    # שומר את כל הקטלוג כאובייקט JSON אחד ב-Redis
+    # שומר את כל הקטלוג בזיכרון
     r.set("shopipet:catalog", json.dumps(data))
 
 def get_catalog():
