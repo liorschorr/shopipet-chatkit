@@ -1,11 +1,16 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "api/chat.py", "use": "@vercel/python" },
-    { "src": "public/**", "use": "@vercel/static" }
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" }
   ],
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/api/(.*)", "dest": "api/chat.py" }
-  ]
+  "crons": [
+    {
+      "path": "/api/update_catalog",
+      "schedule": "0 2 * * *" 
+    }
+  ],
+  "functions": {
+    "api/**/*.py": {
+      "maxDuration": 60
+    }
+  }
 }
