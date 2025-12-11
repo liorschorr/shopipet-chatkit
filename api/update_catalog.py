@@ -1,96 +1,67 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import os
+from openai import OpenAI
 from woocommerce import API
-from utils.ai import get_embedding
-from utils.db import save_catalog
+
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID")
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            # הגדרה: כמה מוצרים למשוך בריצה הזו? (5 לבדיקה מהירה)
-            MAX_PRODUCTS_TO_PROCESS = 5 
-            
+            # 1. משיכת מוצרים (עד 100 לצורך הדגמה)
             wcapi = API(
                 url=os.environ.get("WOO_BASE_URL"),
                 consumer_key=os.environ.get("WOO_CONSUMER_KEY"),
                 consumer_secret=os.environ.get("WOO_CONSUMER_SECRET"),
                 version="wc/v3",
-                timeout=20 
+                timeout=50
             )
-
-            processed_catalog = []
-            page = 1
+            products = wcapi.get("products", params={"per_page": 100, "status": "publish"}).json()
             
-            # לולאה ראשית
-            while len(processed_catalog) < MAX_PRODUCTS_TO_PROCESS:
-                # מושכים רק 10 מוצרים בכל קריאה כדי לא להעמיס
-                products = wcapi.get("products", params={"per_page": 10, "page": page}).json()
+            # 2. יצירת קובץ טקסט
+            content = ""
+            for p in products:
+                price = p['sale_price'] if p['on_sale'] else p['regular_price']
+                stock = "במלאי" if p['stock_status'] == 'instock' else "חסר"
+                desc = p['short_description'].replace('<p>','').replace('</p>','')
                 
-                if not products:
-                    break
-                
-                for p in products:
-                    # אם הגענו למכסה - עוצרים מיד
-                    if len(processed_catalog) >= MAX_PRODUCTS_TO_PROCESS:
-                        break
-
-                    if p['status'] != 'publish':
-                        continue
-
-                    # עיבוד נתונים
-                    price_str = f"{p['price']} ₪"
-                    if p['on_sale']:
-                        price_str = f"מבצע: {p['sale_price']} ₪ (במקום {p['regular_price']} ₪)"
-
-                    stock_str = "במלאי" if p['stock_status'] == 'instock' else "חסר במלאי"
-
-                    variations_str = ""
-                    if p['type'] == 'variable':
-                        attrs = []
-                        for attr in p['attributes']:
-                            options = ", ".join(attr['options'])
-                            attrs.append(f"{attr['name']}: {options}")
-                        variations_str = " | אפשרויות: " + " ; ".join(attrs)
-
-                    cats = ", ".join([c['name'] for c in p['categories']])
-                    tags = ", ".join([t['name'] for t in p['tags']])
-                    clean_desc = p['short_description'].replace('<p>', '').replace('</p>', '')
-
-                    text_to_embed = (
-                        f"מוצר: {p['name']}.\n"
-                        f"קטגוריה: {cats}.\n"
-                        f"מחיר: {price_str}.\n"
-                        f"סטטוס: {stock_str}.\n"
-                        f"תיאור: {clean_desc}.\n"
-                        f"תכונות: {variations_str}.\n"
-                        f"תגיות: {tags}."
-                    )
-
-                    item = {
-                        "id": p['id'],
-                        "name": p['name'],
-                        "price": p['price'],
-                        "link": p['permalink'],
-                        "image": p['images'][0]['src'] if p['images'] else "",
-                        "embedding": get_embedding(text_to_embed),
-                        "raw_text": text_to_embed
-                    }
-                    processed_catalog.append(item)
-                
-                page += 1
-
-            # שמירה ל-Redis
-            save_catalog(processed_catalog)
+                # פורמט שה-Agent מבין בקלות
+                content += f"מוצר: {p['name']}\nמחיר: {price} שח\nמלאי: {stock}\nתיאור: {desc}\nקישור: {p['permalink']}\nתמונה: {p['images'][0]['src'] if p['images'] else ''}\n\n"
             
+            # שמירה זמנית
+            file_path = "/tmp/catalog.txt"
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            
+            # 3. העלאה ל-OpenAI Vector Store
+            # בדיקה אם ל-Assistant יש כבר Vector Store
+            my_assistant = client.beta.assistants.retrieve(ASSISTANT_ID)
+            tool_res = my_assistant.tool_resources
+            vs_id = None
+            
+            if tool_res and tool_res.file_search and tool_res.file_search.vector_store_ids:
+                vs_id = tool_res.file_search.vector_store_ids[0]
+            else:
+                # יצירת חדש אם אין
+                vs = client.beta.vector_stores.create(name="ShopiPet Store")
+                vs_id = vs.id
+                client.beta.assistants.update(
+                    assistant_id=ASSISTANT_ID,
+                    tool_resources={"file_search": {"vector_store_ids": [vs_id]}}
+                )
+
+            # העלאת הקובץ
+            with open(file_path, "rb") as f:
+                client.beta.vector_stores.files.upload_and_poll(
+                    vector_store_id=vs_id,
+                    file=f
+                )
+
             self.send_response(200)
             self.end_headers()
-            success_msg = {
-                "status": "success", 
-                "message": "TEST MODE: Processed first 5 items only",
-                "items_count": len(processed_catalog)
-            }
-            self.wfile.write(json.dumps(success_msg).encode('utf-8'))
+            self.wfile.write(json.dumps({"status": "success", "msg": "Catalog updated in OpenAI"}).encode('utf-8'))
 
         except Exception as e:
             self.send_response(500)
