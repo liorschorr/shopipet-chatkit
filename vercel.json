@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/update_catalog",
+      "schedule": "0 2 * * *"
+    }
+  ],
   "functions": {
     "api/**/*.py": {
       "maxDuration": 60
