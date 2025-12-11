@@ -5,7 +5,9 @@ import redis
 import requests
 from utils.cors import cors_headers
 
-r = redis.from_url(os.environ.get("KV_URL"))
+# שינוי: Redis URL
+redis_url = os.environ.get("shopipetbot_REDIS_URL")
+r = redis.from_url(redis_url, ssl_cert_reqs=None)
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -21,7 +23,6 @@ class handler(BaseHTTPRequestHandler):
         phone = body.get("phone")
         user_code = body.get("code")
 
-        # אימות מול Redis
         stored_code = r.get(f"otp:{phone}")
         
         if not stored_code or stored_code.decode('utf-8') != user_code:
@@ -32,12 +33,11 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"success": False, "message": "Code Invalid"}).encode('utf-8'))
             return
 
-        # מחיקת הקוד לאחר שימוש
         r.delete(f"otp:{phone}")
 
-        # שליפת הזמנות מווקומרס
-        wc_url = os.environ.get("WC_URL")
-        auth = (os.environ.get("WC_CONSUMER_KEY"), os.environ.get("WC_CONSUMER_SECRET"))
+        # שינוי: משתני WooCommerce הקיימים אצלך
+        wc_url = os.environ.get("WOO_BASE_URL")
+        auth = (os.environ.get("WOO_CONSUMER_KEY"), os.environ.get("WOO_CONSUMER_SECRET"))
         
         try:
             res = requests.get(f"{wc_url}/wp-json/wc/v3/orders", auth=auth, params={"search": phone}, timeout=10)
