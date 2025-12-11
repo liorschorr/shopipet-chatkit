@@ -8,11 +8,11 @@ from utils.db import save_catalog
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            # 1. חיבור ל-WooCommerce
+            # שינוי: שימוש בשמות המשתנים הקיימים אצלך
             wcapi = API(
-                url=os.environ.get("WC_URL"),
-                consumer_key=os.environ.get("WC_CONSUMER_KEY"),
-                consumer_secret=os.environ.get("WC_CONSUMER_SECRET"),
+                url=os.environ.get("WOO_BASE_URL"),
+                consumer_key=os.environ.get("WOO_CONSUMER_KEY"),
+                consumer_secret=os.environ.get("WOO_CONSUMER_SECRET"),
                 version="wc/v3",
                 timeout=50
             )
@@ -29,15 +29,13 @@ class handler(BaseHTTPRequestHandler):
                     if p['status'] != 'publish':
                         continue
 
-                    # עיבוד מחיר ומבצע
+                    # עיבוד מחיר
                     price_str = f"{p['price']} ₪"
                     if p['on_sale']:
                         price_str = f"מבצע: {p['sale_price']} ₪ (במקום {p['regular_price']} ₪)"
 
-                    # עיבוד מלאי
                     stock_str = "במלאי" if p['stock_status'] == 'instock' else "חסר במלאי"
 
-                    # עיבוד וריאציות
                     variations_str = ""
                     if p['type'] == 'variable':
                         attrs = []
@@ -46,13 +44,10 @@ class handler(BaseHTTPRequestHandler):
                             attrs.append(f"{attr['name']}: {options}")
                         variations_str = " | אפשרויות: " + " ; ".join(attrs)
 
-                    # תגיות וקטגוריות
                     cats = ", ".join([c['name'] for c in p['categories']])
                     tags = ", ".join([t['name'] for t in p['tags']])
-                    
                     clean_desc = p['short_description'].replace('<p>', '').replace('</p>', '')
 
-                    # הטקסט המלא ל-AI
                     text_to_embed = (
                         f"מוצר: {p['name']}.\n"
                         f"קטגוריה: {cats}.\n"
