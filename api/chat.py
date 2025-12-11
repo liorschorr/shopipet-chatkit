@@ -1,5 +1,39 @@
 from http.server import BaseHTTPRequestHandler
 import json
+import os
+import time
+import requests
+from openai import OpenAI
+
+# הגדרות
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID") # נצטרך להוסיף את זה ל-Vercel
+
+# --- פונקציית העזר (הכלי שה-Agent משתמש בו) ---
+def check_woocommerce_order(phone):
+    url = os.environ.get("WOO_BASE_URL") # שים לב לשם המשתנה!
+    key = os.environ.get("WOO_CONSUMER_KEY")
+    secret = os.environ.get("WOO_CONSUMER_SECRET")
+    
+    try:
+        # חיפוש הזמנה בווקומרס
+        res = requests.get(f"{url}/wp-json/wc/v3/orders", auth=(key, secret), params={"search": phone})
+        orders = res.json()
+        
+        if not orders:
+            return json.dumps({"found": False, "msg": "לא מצאתי הזמנה לטלפון הזה."})
+            
+        order = orders[0]
+        items_list = ", ".join([i['name'] for i in order['line_items']])
+        return json.dumps({
+            "found": True,
+            "id": order['id'],
+            "status": order['status'],
+            "total": order['total'],
+            "items": items_list
+        })
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -11,70 +45,80 @@ class handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            # ייבוא דינמי
-            try:
-                from utils.ai import get_embedding, cosine_similarity, get_chat_response, classify_intent
-                from utils.db import get_catalog
-            except Exception as e:
-                raise Exception(f"Import Error: {str(e)}")
-
             length = int(self.headers.get('content-length'))
             body = json.loads(self.rfile.read(length))
             
-            user_message = body.get("message", "")
-            history = body.get("history", [])
-            
-            # --- שלב 1: זיהוי כוונת הלקוח (AI) ---
-            # ה-AI יחליט אם זה 'chat', 'search' או 'order'
-            intent = classify_intent(user_message)
-            print(f"Detected Intent: {intent}") # לוג לבדיקה
+            user_msg = body.get("message", "")
+            # ה-Frontend ישלח לנו thread_id אם זו שיחה ממשיכה
+            thread_id = body.get("thread_id")
 
-            context_str = "" # ברירת מחדל - אין קונטקסט
-            response_items = [] # ברירת מחדל - אין כרטיסי מוצר
-
-            # --- שלב 2: ביצוע פעולות לפי הכוונה ---
+            # 1. ניהול שיחה (Thread)
+            if not thread_id:
+                thread = client.beta.threads.create()
+                thread_id = thread.id
             
-            # תרחיש א': הלקוח מחפש מוצר
-            if intent == 'search':
-                user_vector = get_embedding(user_message)
-                catalog = get_catalog()
+            # הוספת הודעת המשתמש
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=user_msg
+            )
+
+            # 2. הרצת ה-Agent
+            run = client.beta.threads.runs.create(
+                thread_id=thread_id,
+                assistant_id=ASSISTANT_ID
+            )
+
+            # 3. לולאת המתנה (Polling) - מחכים שה-Agent יחליט
+            bot_reply = ""
+            while True:
+                run_status = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
                 
-                if catalog:
-                    scored_items = []
-                    for item in catalog:
-                        if 'embedding' in item:
-                            score = cosine_similarity(user_vector, item['embedding'])
-                            if score > 0.4: 
-                                scored_items.append((score, item))
+                if run_status.status == 'completed':
+                    # ה-Agent סיים לחשוב
+                    msgs = client.beta.threads.messages.list(thread_id=thread_id)
+                    bot_reply = msgs.data[0].content[0].text.value
+                    break
+                
+                elif run_status.status == 'requires_action':
+                    # ה-Agent מבקש להפעיל כלי (בדיקת הזמנה)
+                    tool_calls = run_status.required_action.submit_tool_outputs.tool_calls
+                    tool_outputs = []
                     
-                    scored_items.sort(key=lambda x: x[0], reverse=True)
+                    for tool in tool_calls:
+                        if tool.function.name == "get_order_status":
+                            args = json.loads(tool.function.arguments)
+                            phone = args.get("phone")
+                            # הפעלת הפונקציה שלנו בפייתון
+                            output = check_woocommerce_order(phone)
+                            tool_outputs.append({"tool_call_id": tool.id, "output": output})
                     
-                    # אם נמצאו מוצרים רלוונטיים
-                    if scored_items:
-                        top_items = [item for score, item in scored_items[:5]]
-                        response_items = top_items # נשלח לווידג'ט
-                        
-                        # נבנה טקסט ל-AI
-                        for item in top_items:
-                            raw = item.get('raw_text', str(item))
-                            context_str += f"- {raw}\n"
-            
-            # תרחיש ב': הלקוח שואל על הזמנה (אופציונלי - כרגע רק הכוונה לבוט)
-            elif intent == 'order':
-                context_str = "SYSTEM NOTE: The user is asking about an order. Kindly ask for their phone number to verify their identity via SMS."
+                    # החזרת התשובה ל-Agent
+                    client.beta.threads.runs.submit_tool_outputs(
+                        thread_id=thread_id,
+                        run_id=run.id,
+                        tool_outputs=tool_outputs
+                    )
+                
+                elif run_status.status in ['failed', 'expired']:
+                    bot_reply = "נתקלתי בבעיה טכנית. נסה שוב."
+                    break
+                
+                time.sleep(1) # ממתינים שנייה
 
-            # תרחיש ג' (chat): הלקוח מברך לשלום -> לא עושים כלום, משאירים context_str ריק.
+            # ניקוי הערות שוליים של OpenAI [source]
+            import re
+            bot_reply = re.sub(r'【.*?】', '', bot_reply)
 
-            # --- שלב 3: תשובת הבוט הסופית ---
-            ai_reply = get_chat_response(history + [{"role": "user", "content": user_message}], context_str)
-            
+            # החזרת תשובה + Thread ID (כדי שהדפדפן יזכור את השיחה)
             response_data = {
-                "message": ai_reply,
-                "items": response_items # יהיה מלא רק אם הכוונה הייתה 'search' ונמצאו מוצרים
+                "message": bot_reply,
+                "thread_id": thread_id 
             }
 
         except Exception as e:
-            print(f"Error: {str(e)}")
+            print(f"Error: {e}")
             response_data = {"error": str(e)}
 
         self.send_response(200)
