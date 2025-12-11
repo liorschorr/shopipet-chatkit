@@ -10,7 +10,7 @@ ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID")
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            # 1. משיכת מוצרים (עד 100 לצורך הדגמה)
+            # 1. משיכת מוצרים מווקומרס
             wcapi = API(
                 url=os.environ.get("WOO_BASE_URL"),
                 consumer_key=os.environ.get("WOO_CONSUMER_KEY"),
@@ -18,16 +18,22 @@ class handler(BaseHTTPRequestHandler):
                 version="wc/v3",
                 timeout=50
             )
+            
+            # מושך 100 מוצרים (אפשר להגדיל)
             products = wcapi.get("products", params={"per_page": 100, "status": "publish"}).json()
             
+            if not products:
+                self.send_response(200)
+                self.wfile.write(json.dumps({"status": "error", "msg": "No products found"}).encode('utf-8'))
+                return
+
             # 2. יצירת קובץ טקסט
             content = ""
             for p in products:
                 price = p['sale_price'] if p['on_sale'] else p['regular_price']
                 stock = "במלאי" if p['stock_status'] == 'instock' else "חסר"
-                desc = p['short_description'].replace('<p>','').replace('</p>','')
+                desc = str(p['short_description']).replace('<p>','').replace('</p>','')
                 
-                # פורמט שה-Agent מבין בקלות
                 content += f"מוצר: {p['name']}\nמחיר: {price} שח\nמלאי: {stock}\nתיאור: {desc}\nקישור: {p['permalink']}\nתמונה: {p['images'][0]['src'] if p['images'] else ''}\n\n"
             
             # שמירה זמנית
@@ -36,7 +42,7 @@ class handler(BaseHTTPRequestHandler):
                 f.write(content)
             
             # 3. העלאה ל-OpenAI Vector Store
-            # בדיקה אם ל-Assistant יש כבר Vector Store
+            # מציאת ה-Vector Store שמחובר ל-Agent
             my_assistant = client.beta.assistants.retrieve(ASSISTANT_ID)
             tool_res = my_assistant.tool_resources
             vs_id = None
@@ -44,7 +50,7 @@ class handler(BaseHTTPRequestHandler):
             if tool_res and tool_res.file_search and tool_res.file_search.vector_store_ids:
                 vs_id = tool_res.file_search.vector_store_ids[0]
             else:
-                # יצירת חדש אם אין
+                # יצירה וחיבור אם אין
                 vs = client.beta.vector_stores.create(name="ShopiPet Store")
                 vs_id = vs.id
                 client.beta.assistants.update(
@@ -61,7 +67,8 @@ class handler(BaseHTTPRequestHandler):
 
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(json.dumps({"status": "success", "msg": "Catalog updated in OpenAI"}).encode('utf-8'))
+            # זו ההודעה שתאשר שאתה בגרסה החדשה!
+            self.wfile.write(json.dumps({"status": "success", "msg": "Catalog uploaded to OpenAI", "count": len(products)}).encode('utf-8'))
 
         except Exception as e:
             self.send_response(500)
