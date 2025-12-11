@@ -2,11 +2,11 @@ import os
 import redis
 import json
 
-# שינוי: שימוש במשתנה הקיים אצלך
+# שימוש במשתנה הקיים אצלך
 redis_url = os.environ.get("shopipetbot_REDIS_URL")
 
-# במקרים מסוימים נדרש להוסיף ssl_cert_reqs=None כדי למנוע שגיאות תעודה
-r = redis.from_url(redis_url, ssl_cert_reqs=None)
+# תיקון: מחקנו את ssl_cert_reqs=None שגרם לשגיאה
+r = redis.from_url(redis_url)
 
 def save_catalog(data):
     r.set("shopipet:catalog", json.dumps(data))
