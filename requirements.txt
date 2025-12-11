@@ -2,8 +2,6 @@ openai
 redis
 requests
 numpy
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-gspread
+woocommerce
+twilio
 python-dotenv
