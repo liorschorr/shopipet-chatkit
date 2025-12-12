@@ -1,175 +1,128 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import os
-import traceback
+import time
+import requests
+from openai import OpenAI
 
-# משתנה גלובלי לשמירת שגיאות טעינה
-STARTUP_ERROR = None
+# הגדרות
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID") # נצטרך להוסיף את זה ל-Vercel
 
-try:
-    # מנסים לטעון ספריות. אם נכשל - שומרים את השגיאה ולא קורסים.
-    from openai import OpenAI
-    from woocommerce import API
-except Exception as e:
-    STARTUP_ERROR = f"Library Import Failed: {str(e)}"
+# --- פונקציית העזר (הכלי שה-Agent משתמש בו) ---
+def check_woocommerce_order(phone):
+    url = os.environ.get("WOO_BASE_URL") # שים לב לשם המשתנה!
+    key = os.environ.get("WOO_CONSUMER_KEY")
+    secret = os.environ.get("WOO_CONSUMER_SECRET")
+    
+    try:
+        # חיפוש הזמנה בווקומרס
+        res = requests.get(f"{url}/wp-json/wc/v3/orders", auth=(key, secret), params={"search": phone})
+        orders = res.json()
+        
+        if not orders:
+            return json.dumps({"found": False, "msg": "לא מצאתי הזמנה לטלפון הזה."})
+            
+        order = orders[0]
+        items_list = ", ".join([i['name'] for i in order['line_items']])
+        return json.dumps({
+            "found": True,
+            "id": order['id'],
+            "status": order['status'],
+            "total": order['total'],
+            "items": items_list
+        })
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 class handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        # 1. שליחת כותרות הצלחה מיד (כדי למנוע שגיאת תקשורת בדפדפן)
+    def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header('Content-type', 'application/json')
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
-        # 2. אם הייתה שגיאה בטעינת הספריות - מדווחים עליה ועוצרים
-        if STARTUP_ERROR:
-            self.wfile.write(json.dumps({
-                "error": "Server Startup Error", 
-                "details": STARTUP_ERROR,
-                "hint": "Check requirements.txt"
-            }).encode('utf-8'))
-            return
-
+    def do_POST(self):
         try:
-            # 3. קריאת המידע מהדפדפן
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data)
+            length = int(self.headers.get('content-length'))
+            body = json.loads(self.rfile.read(length))
             
-            user_msg = data.get('message')
-            thread_id = data.get('thread_id')
-            
-            # 4. בדיקת מפתחות
-            api_key = os.environ.get("OPENAI_API_KEY")
-            assistant_id = os.environ.get("OPENAI_ASSISTANT_ID")
-            
-            if not api_key:
-                raise Exception("Missing OPENAI_API_KEY env var")
-            if not assistant_id:
-                raise Exception("Missing OPENAI_ASSISTANT_ID env var")
+            user_msg = body.get("message", "")
+            # ה-Frontend ישלח לנו thread_id אם זו שיחה ממשיכה
+            thread_id = body.get("thread_id")
 
-            # 5. אתחול OpenAI
-            client = OpenAI(api_key=api_key)
-
-            # ניהול שיחה
+            # 1. ניהול שיחה (Thread)
             if not thread_id:
                 thread = client.beta.threads.create()
                 thread_id = thread.id
             
+            # הוספת הודעת המשתמש
             client.beta.threads.messages.create(
                 thread_id=thread_id,
                 role="user",
                 content=user_msg
             )
 
+            # 2. הרצת ה-Agent
             run = client.beta.threads.runs.create(
                 thread_id=thread_id,
-                assistant_id=assistant_id
+                assistant_id=ASSISTANT_ID
             )
 
-            # 6. לולאת המתנה (Polling)
-            import time
-            start_time = time.time()
-            
+            # 3. לולאת המתנה (Polling) - מחכים שה-Agent יחליט
+            bot_reply = ""
             while True:
-                # הגנה מזמן ריצה (55 שניות)
-                if time.time() - start_time > 55:
-                    raise Exception("Timeout: OpenAI took too long (>55s)")
-
                 run_status = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
                 
                 if run_status.status == 'completed':
-                    messages = client.beta.threads.messages.list(thread_id=thread_id)
-                    reply = messages.data[0].content[0].text.value
-                    
-                    # ניקוי
-                    import re
-                    reply = re.sub(r'【.*?†source】', '', reply)
-                    
-                    self.wfile.write(json.dumps({
-                        "reply": reply, 
-                        "thread_id": thread_id
-                    }).encode('utf-8'))
+                    # ה-Agent סיים לחשוב
+                    msgs = client.beta.threads.messages.list(thread_id=thread_id)
+                    bot_reply = msgs.data[0].content[0].text.value
                     break
                 
                 elif run_status.status == 'requires_action':
-                    # טיפול בכלים (פונקציות)
+                    # ה-Agent מבקש להפעיל כלי (בדיקת הזמנה)
                     tool_calls = run_status.required_action.submit_tool_outputs.tool_calls
+                    tool_outputs = []
                     
-                    # נכין את המשתנים ללוגיקה
-                    final_reply = None
-                    action_payload = None
-
                     for tool in tool_calls:
-                        func_name = tool.function.name
-                        args = json.loads(tool.function.arguments)
-
-                        if func_name == "show_products":
-                            # אתחול ווקומרס מוגן
-                            try:
-                                wcapi = API(
-                                    url=os.environ.get("WOO_BASE_URL"),
-                                    consumer_key=os.environ.get("WOO_CONSUMER_KEY"),
-                                    consumer_secret=os.environ.get("WOO_CONSUMER_SECRET"),
-                                    version="wc/v3",
-                                    timeout=20
-                                )
-                                product_ids = args.get("product_ids", [])
-                                products_data = []
-                                
-                                if product_ids:
-                                    ids_str = ",".join(map(str, product_ids))
-                                    woo_res = wcapi.get("products", params={"include": ids_str})
-                                    if woo_res.status_code == 200:
-                                        for p in woo_res.json():
-                                            products_data.append({
-                                                "id": p['id'],
-                                                "name": p['name'],
-                                                "price": f"{p['price']} ₪",
-                                                "regular_price": f"{p['regular_price']} ₪",
-                                                "sale_price": f"{p['sale_price']} ₪",
-                                                "on_sale": p['on_sale'],
-                                                "image": p['images'][0]['src'] if p['images'] else "",
-                                                "permalink": p['permalink'],
-                                                "add_to_cart_url": f"{os.environ.get('WOO_BASE_URL')}/?add-to-cart={p['id']}"
-                                            })
-                            except Exception as woo_err:
-                                print(f"Woo Error: {woo_err}")
-
-                            # הכנת תשובה
-                            client.beta.threads.runs.cancel(thread_id=thread_id, run_id=run.id)
-                            final_reply = "מצאתי את המוצרים הבאים:"
-                            action_payload = {
-                                "action": "show_products", 
-                                "products": products_data
-                            }
-                            break # מספיק כלי אחד
-
-                    # שליחת תשובה סופית אם יש
-                    if final_reply:
-                        response = {
-                            "reply": final_reply,
-                            "thread_id": thread_id
-                        }
-                        if action_payload:
-                            response.update(action_payload)
-                        
-                        self.wfile.write(json.dumps(response).encode('utf-8'))
-                        break
-
-                elif run_status.status in ['failed', 'cancelled', 'expired']:
-                    err_msg = f"OpenAI Run Failed: {run_status.last_error}"
-                    raise Exception(err_msg)
+                        if tool.function.name == "get_order_status":
+                            args = json.loads(tool.function.arguments)
+                            phone = args.get("phone")
+                            # הפעלת הפונקציה שלנו בפייתון
+                            output = check_woocommerce_order(phone)
+                            tool_outputs.append({"tool_call_id": tool.id, "output": output})
+                    
+                    # החזרת התשובה ל-Agent
+                    client.beta.threads.runs.submit_tool_outputs(
+                        thread_id=thread_id,
+                        run_id=run.id,
+                        tool_outputs=tool_outputs
+                    )
                 
-                time.sleep(0.5)
+                elif run_status.status in ['failed', 'expired']:
+                    bot_reply = "נתקלתי בבעיה טכנית. נסה שוב."
+                    break
+                
+                time.sleep(1) # ממתינים שנייה
+
+            # ניקוי הערות שוליים של OpenAI [source]
+            import re
+            bot_reply = re.sub(r'【.*?】', '', bot_reply)
+
+            # החזרת תשובה + Thread ID (כדי שהדפדפן יזכור את השיחה)
+            response_data = {
+                "message": bot_reply,
+                "thread_id": thread_id 
+            }
 
         except Exception as e:
-            # תפיסת כל שגיאה והדפסתה ללקוח
-            error_msg = str(e)
-            trace = traceback.format_exc()
-            print(f"CRITICAL ERROR: {trace}")
-            
-            self.wfile.write(json.dumps({
-                "error": "Internal Error",
-                "message": error_msg,
-                "trace": trace
-            }).encode('utf-8'))
+            print(f"Error: {e}")
+            response_data = {"error": str(e)}
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(response_data).encode('utf-8'))
