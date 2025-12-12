@@ -2,83 +2,37 @@ from http.server import BaseHTTPRequestHandler
 import json
 import os
 import time
-import requests
-from openai import OpenAI
 import traceback
 
-# --- הגדרות ---
-# שימוש ב-Init מוגן כדי למנוע קריסה בהתחלה
+# --- אתחול בטוח ---
 try:
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID")
-except:
-    client = None
-    ASSISTANT_ID = None
-
-# --- פונקציית העזר לבדיקת הזמנה ---
-def check_woocommerce_order(phone):
-    url = os.environ.get("WOO_BASE_URL")
-    key = os.environ.get("WOO_CONSUMER_KEY")
-    secret = os.environ.get("WOO_CONSUMER_SECRET")
-    
-    if not url or not key:
-        return json.dumps({"error": "WooCommerce config missing"})
-
-    try:
-        # חיפוש הזמנה
-        res = requests.get(f"{url}/wp-json/wc/v3/orders", auth=(key, secret), params={"search": phone}, timeout=10)
-        
-        if res.status_code != 200:
-             return json.dumps({"error": f"WooCommerce Error: {res.status_code}"})
-
-        orders = res.json()
-        if not orders:
-            return json.dumps({"found": False, "msg": "לא מצאתי הזמנה לטלפון הזה."})
-            
-        order = orders[0]
-        # איסוף פריטים בצורה בטוחה
-        items_names = [i.get('name', 'מוצר') for i in order.get('line_items', [])]
-        items_list = ", ".join(items_names)
-        
-        return json.dumps({
-            "found": True,
-            "id": order.get('id'),
-            "status": order.get('status'),
-            "total": order.get('total'),
-            "items": items_list
-        })
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    from openai import OpenAI
+    from woocommerce import API
+except ImportError:
+    OpenAI = None
+    API = None
 
 class handler(BaseHTTPRequestHandler):
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
-
     def do_POST(self):
-        # 1. שליחת כותרות מיד (מונע timeout של הדפדפן)
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
-        response_data = {}
-
         try:
-            # בדיקת אתחול
-            if not client:
-                raise Exception("OpenAI Client failed to initialize. Check API Keys.")
+            # 1. בדיקת ספריות
+            if not OpenAI or not API:
+                raise Exception("Libraries not installed. Check requirements.txt")
 
-            length = int(self.headers.get('content-length', 0))
-            body = json.loads(self.rfile.read(length))
-            
-            user_msg = body.get("message", "")
-            thread_id = body.get("thread_id")
+            # 2. קריאת מידע
+            content_length = int(self.headers.get('content-length', 0))
+            body = json.loads(self.rfile.read(content_length))
+            user_msg = body.get('message')
+            thread_id = body.get('thread_id')
 
-            # 2. ניהול שיחה
+            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+            assistant_id = os.environ.get("OPENAI_ASSISTANT_ID")
+
+            # 3. ניהול שיחה
             if not thread_id:
                 thread = client.beta.threads.create()
                 thread_id = thread.id
@@ -89,83 +43,92 @@ class handler(BaseHTTPRequestHandler):
                 content=user_msg
             )
 
-            # 3. הרצה
             run = client.beta.threads.runs.create(
                 thread_id=thread_id,
-                assistant_id=ASSISTANT_ID
+                assistant_id=assistant_id
             )
 
-            # 4. לולאת המתנה עם שעון עצר (החלק החשוב!)
-            bot_reply = "..."
+            # 4. לולאת המתנה (עד 50 שניות)
             start_time = time.time()
-            
             while True:
-                # --- בדיקת הזמן ---
-                # אם עברו 50 שניות, אנחנו חותכים כדי ש-Vercel לא יהרוג אותנו
                 if time.time() - start_time > 50:
-                    bot_reply = "⏱️ הבוט מתעכב בתשובה (Timeout). נסה לשאול שוב."
+                    self.wfile.write(json.dumps({"reply": "לוקח לי זמן לחשוב... נסה שוב רגע."}).encode('utf-8'))
                     break
 
                 run_status = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
                 
                 if run_status.status == 'completed':
+                    # תשובה רגילה (טקסט)
                     msgs = client.beta.threads.messages.list(thread_id=thread_id)
-                    # לוקחים את ההודעה האחרונה ומוודאים שהיא של ה-Assistant
-                    latest_msg = msgs.data[0]
-                    if latest_msg.role == 'assistant':
-                        bot_reply = latest_msg.content[0].text.value
-                    else:
-                        bot_reply = "לא התקבלה תשובה ברורה (No Reply)."
+                    reply = msgs.data[0].content[0].text.value
+                    
+                    # ניקוי הערות שוליים
+                    import re
+                    reply = re.sub(r'【.*?】', '', reply)
+                    
+                    self.wfile.write(json.dumps({
+                        "reply": reply, 
+                        "thread_id": thread_id
+                    }).encode('utf-8'))
                     break
                 
                 elif run_status.status == 'requires_action':
+                    # --- הבוט רוצה להציג מוצרים! ---
                     tool_calls = run_status.required_action.submit_tool_outputs.tool_calls
-                    tool_outputs = []
                     
                     for tool in tool_calls:
-                        func_name = tool.function.name
-                        args = json.loads(tool.function.arguments)
+                        if tool.function.name == "show_products":
+                            # 1. משיכת ה-IDs שהבוט מצא
+                            args = json.loads(tool.function.arguments)
+                            product_ids = args.get("product_ids", [])
+                            
+                            products_data = []
+                            if product_ids:
+                                # 2. שליפת פרטים מווקומרס
+                                wcapi = API(
+                                    url=os.environ.get("WOO_BASE_URL"),
+                                    consumer_key=os.environ.get("WOO_CONSUMER_KEY"),
+                                    consumer_secret=os.environ.get("WOO_CONSUMER_SECRET"),
+                                    version="wc/v3",
+                                    timeout=20
+                                )
+                                ids_str = ",".join(map(str, product_ids))
+                                try:
+                                    res = wcapi.get("products", params={"include": ids_str})
+                                    if res.status_code == 200:
+                                        for p in res.json():
+                                            # בניית אובייקט מוצר ל-Frontend
+                                            img = p['images'][0]['src'] if p['images'] else "https://placehold.co/150x150?text=No+Image"
+                                            products_data.append({
+                                                "id": p['id'],
+                                                "name": p['name'],
+                                                "price": f"{p['price']} ₪",
+                                                "regular_price": f"{p['regular_price']} ₪",
+                                                "sale_price": f"{p['sale_price']} ₪",
+                                                "on_sale": p['on_sale'],
+                                                "image": img,
+                                                "permalink": p['permalink'],
+                                                "add_to_cart_url": f"{os.environ.get('WOO_BASE_URL')}/?add-to-cart={p['id']}"
+                                            })
+                                except Exception as e:
+                                    print(f"Woo Error: {e}")
 
-                        # טיפול בבדיקת הזמנה
-                        if func_name == "get_order_status":
-                            phone = args.get("phone")
-                            output = check_woocommerce_order(phone)
-                            tool_outputs.append({"tool_call_id": tool.id, "output": output})
-                        
-                        # טיפול בהצגת מוצרים (אם תרצה להחזיר את זה)
-                        elif func_name == "show_products":
-                            # כרגע נחזיר תשובה ריקה כדי לא לשבור, 
-                            # או שתעתיק לפה את הקוד מהשלבים הקודמים
-                            tool_outputs.append({"tool_call_id": tool.id, "output": "OK"})
+                            # 3. ביטול הריצה (כדי שהבוט לא יכתוב טקסט סתם) ושליחת המוצרים
+                            client.beta.threads.runs.cancel(thread_id=thread_id, run_id=run.id)
+                            
+                            self.wfile.write(json.dumps({
+                                "action": "show_products",
+                                "products": products_data,
+                                "reply": "הנה המוצרים שמצאתי עבורך:", # כותרת לפני הכרטיסיות
+                                "thread_id": thread_id
+                            }).encode('utf-8'))
+                            return # יציאה מהפונקציה
 
-                    if tool_outputs:
-                        client.beta.threads.runs.submit_tool_outputs(
-                            thread_id=thread_id,
-                            run_id=run.id,
-                            tool_outputs=tool_outputs
-                        )
-                
                 elif run_status.status in ['failed', 'expired', 'cancelled']:
-                    error_detail = run_status.last_error.message if run_status.last_error else "Unknown"
-                    bot_reply = f"שגיאה בעיבוד הבקשה ב-OpenAI: {error_detail}"
+                    self.wfile.write(json.dumps({"error": "AI Error"}).encode('utf-8'))
                     break
                 
-                time.sleep(1) # המתנה של שנייה בין בדיקות
-
-            # ניקוי הערות שוליים
-            import re
-            bot_reply = re.sub(r'【.*?】', '', str(bot_reply))
-
-            response_data = {
-                "reply": bot_reply, # שים לב: ב-Frontend שלך הקוד מצפה ל-reply או message? בדוק ב-js
-                "message": bot_reply, # שולח בשני השמות ליתר ביטחון
-                "thread_id": thread_id 
-            }
+                time.sleep(0.5)
 
         except Exception as e:
-            # תפיסת שגיאות קריטית
-            print(f"CRITICAL ERROR: {traceback.format_exc()}")
-            response_data = {"error": str(e), "message": f"שגיאת שרת: {str(e)}"}
-
-        # כתיבת התשובה הסופית
-        self.wfile.write(json.dumps(response_data).encode('utf-8'))
+            self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
