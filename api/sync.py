@@ -5,31 +5,36 @@ import traceback
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # 1. שליחת כותרות תקינות מיד
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
 
         response_data = {}
+        current_version = "Unknown"
 
         try:
-            # --- הכל חייב להיות בתוך הפונקציה (מוזז ימינה) ---
-            
-            # טעינת ספריות בתוך הפונקציה
+            # --- בדיקת גרסה (החלק החדש) ---
             try:
-                from openai import OpenAI
-                from woocommerce import API
-            except ImportError as e:
-                raise Exception(f"CRITICAL: Failed to import libraries. Check requirements.txt. Details: {e}")
+                import openai
+                current_version = getattr(openai, "__version__", "Old/Unknown")
+            except ImportError:
+                current_version = "Not Installed"
 
-            # בדיקת משתנים
+            # טעינת ספריות
+            from openai import OpenAI
+            from woocommerce import API
+
+            # --- בדיקת תאימות גרסה ---
+            # אנחנו צריכים לפחות גרסה 1.35.0
+            major, minor, _ = current_version.split('.')[:3]
+            if int(major) < 1 or (int(major) == 1 and int(minor) < 35):
+                 raise Exception(f"OpenAI Version is too old: {current_version}. We need >= 1.35.0. Please Redeploy without Cache.")
+
+            # --- בדיקת משתנים ---
             if not os.environ.get("OPENAI_ASSISTANT_ID"):
                 raise Exception("Missing Environment Variable: OPENAI_ASSISTANT_ID")
             
-            if not os.environ.get("OPENAI_API_KEY"):
-                raise Exception("Missing Environment Variable: OPENAI_API_KEY")
-
-            # 1. משיכת מוצרים מ-WooCommerce
+            # --- 1. משיכת מוצרים ---
             wcapi = API(
                 url=os.environ.get("WOO_BASE_URL"),
                 consumer_key=os.environ.get("WOO_CONSUMER_KEY"),
@@ -38,32 +43,26 @@ class handler(BaseHTTPRequestHandler):
                 timeout=45
             )
             
-            # ניסיון משיכה
             products_res = wcapi.get("products", params={"per_page": 50, "status": "publish"})
-            
-            if products_res.status_code != 200:
-                 raise Exception(f"WooCommerce Error {products_res.status_code}: {products_res.text}")
-                 
             products = products_res.json()
             
-            # 2. יצירת קובץ
+            # --- 2. יצירת קובץ ---
             content = ""
             if products:
                 for p in products:
                     name = p.get('name', 'N/A')
                     price = p.get('price', '0')
                     link = p.get('permalink', '')
-                    # ניקוי תגיות HTML
                     desc = str(p.get('short_description', '')).replace('<p>', '').replace('</p>', '').strip()
                     content += f"מוצר: {name}\nמחיר: {price}\nתיאור: {desc}\nקישור: {link}\n\n"
             else:
-                content = "No products found in store."
+                content = "No products found."
 
             file_path = "/tmp/catalog.txt"
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            # 3. OpenAI Upload
+            # --- 3. OpenAI Upload ---
             client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
             assistant_id = os.environ.get("OPENAI_ASSISTANT_ID")
             
@@ -81,7 +80,6 @@ class handler(BaseHTTPRequestHandler):
                     tool_resources={"file_search": {"vector_store_ids": [vs_id]}}
                 )
 
-            # העלאת הקובץ
             with open(file_path, "rb") as f:
                 client.beta.vector_stores.files.upload_and_poll(
                     vector_store_id=vs_id,
@@ -91,8 +89,8 @@ class handler(BaseHTTPRequestHandler):
             response_data = {
                 "status": "success",
                 "message": "Sync completed successfully",
-                "products_count": len(products) if products else 0,
-                "vector_store_id": vs_id
+                "installed_openai_version": current_version, # כאן נראה את הגרסה!
+                "products_count": len(products) if products else 0
             }
 
         except Exception as e:
@@ -100,8 +98,8 @@ class handler(BaseHTTPRequestHandler):
             response_data = {
                 "status": "error",
                 "error": str(e),
+                "installed_openai_version": current_version, # נראה גרסה גם בשגיאה
                 "location": "Inside Handler Logic"
             }
 
-        # כתיבת התשובה הסופית (גם זה חייב להיות בתוך הפונקציה!)
         self.wfile.write(json.dumps(response_data).encode('utf-8'))
