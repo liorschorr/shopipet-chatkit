@@ -17,7 +17,7 @@ class handler(BaseHTTPRequestHandler):
                 from openai import OpenAI
                 from woocommerce import API
             except ImportError as e:
-                raise Exception(f"CRITICAL: Libraries missing. Check requirements.txt. Details: {e}")
+                raise Exception(f"CRITICAL: Libraries missing. {e}")
 
             # --- בדיקת משתנים ---
             required_vars = ["OPENAI_API_KEY", "OPENAI_ASSISTANT_ID", "WOO_BASE_URL", "WOO_CONSUMER_KEY", "WOO_CONSUMER_SECRET"]
@@ -25,7 +25,7 @@ class handler(BaseHTTPRequestHandler):
             if missing:
                 raise Exception(f"Missing Env Vars: {', '.join(missing)}")
 
-            # --- 1. משיכת מוצרים מ-WooCommerce ---
+            # --- 1. משיכת מוצרים ---
             wcapi = API(
                 url=os.environ.get("WOO_BASE_URL"),
                 consumer_key=os.environ.get("WOO_CONSUMER_KEY"),
@@ -34,35 +34,44 @@ class handler(BaseHTTPRequestHandler):
                 timeout=60
             )
             
-            # משיכת 100 מוצרים (או יותר בלולאה אם צריך)
             products_res = wcapi.get("products", params={"per_page": 100, "status": "publish"})
-            
-            if products_res.status_code != 200:
-                 raise Exception(f"WooCommerce Error {products_res.status_code}: {products_res.text}")
-                 
             products = products_res.json()
             
-            # --- 2. עיבוד הנתונים לקובץ טקסט ---
+            # --- 2. עיבוד הנתונים ---
             content = ""
             if products:
                 for p in products:
+                    # מזהה פנימי סודי (משמש רק לפונקציות טכניות)
                     system_id = p.get('id')
+                    
+                    # --- לוגיקה לאיחוד מק"טים וברקודים ---
+                    # יוצרים רשימה (Set) כדי למנוע כפילויות
+                    identifiers = set()
+                    
+                    # 1. הוספת ה-SKU הראשי
+                    if p.get('sku'):
+                        identifiers.add(str(p.get('sku')))
+                    
+                    # 2. הוספת GTIN/EAN/UPC מתוך Meta Data
+                    for meta in p.get('meta_data', []):
+                        key = meta.get('key', '').lower()
+                        # בדיקה רחבה יותר של שדות ברקוד אפשריים
+                        if any(k in key for k in ['gtin', 'ean', 'isbn', 'upc', 'barcode']):
+                            val = meta.get('value')
+                            if val:
+                                identifiers.add(str(val))
+                    
+                    # המרת הרשימה למחרוזת נקייה (מופרדת בפסיקים)
+                    if identifiers:
+                        codes_display = ", ".join(identifiers)
+                    else:
+                        codes_display = "ללא"
+
                     name = p.get('name', 'N/A')
                     link = p.get('permalink', '')
                     
-                    # --- לוגיקה לזיהוי מק"ט (כולל ברקודים) ---
-                    display_sku = p.get('sku')
-                    if not display_sku:
-                        # חיפוש בשדות Meta נפוצים לברקודים
-                        for meta in p.get('meta_data', []):
-                            if meta.get('key') in ['_gtin', 'gtin', 'gtin_code', '_ean', 'ean_code', 'barcode']:
-                                display_sku = meta.get('value')
-                                break
-                    if not display_sku:
-                        display_sku = "ללא"
-
-                    # נתונים נוספים
-                    price = p.get('price', '') + " שח"
+                    # מחירים
+                    price = str(p.get('price', '')) + " שח"
                     stock = "במלאי" if p.get('stock_status') == 'instock' else "חסר"
                     
                     # ניקוי תיאור
@@ -70,10 +79,12 @@ class handler(BaseHTTPRequestHandler):
                     clean_desc = raw_desc.replace('<p>', '').replace('</p>', '').replace('<br>', '\n').strip()
                     if len(clean_desc) > 300: clean_desc = clean_desc[:300] + "..."
 
-                    # פורמט הבלוק
+                    # --- בניית הבלוק ל-AI ---
                     content += f"--- מוצר ---\n"
-                    content += f"ID: {system_id}\n"
-                    content += f"SKU: {display_sku}\n" # תווית ברורה ל-AI
+                    # שים לב להערה ל-AI ליד ה-ID
+                    content += f"System_ID: {system_id} (INTERNAL_USE_ONLY)\n"
+                    # כל המספרים בשורה אחת
+                    content += f"מזהים (מק\"ט/ברקוד): {codes_display}\n"
                     content += f"שם: {name}\n"
                     content += f"מחיר: {price}\n"
                     content += f"מלאי: {stock}\n"
@@ -86,7 +97,7 @@ class handler(BaseHTTPRequestHandler):
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            # --- 3. עדכון OpenAI (כולל מחיקת הישן) ---
+            # --- 3. עדכון OpenAI וניקוי ישן ---
             client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
             assistant_id = os.environ.get("OPENAI_ASSISTANT_ID")
             
@@ -94,21 +105,14 @@ class handler(BaseHTTPRequestHandler):
             tool_res = my_assistant.tool_resources
             
             vs_id = None
-            
-            # איתור ה-Vector Store הקיים
             if tool_res and tool_res.file_search and tool_res.file_search.vector_store_ids:
                 vs_id = tool_res.file_search.vector_store_ids[0]
-                
-                # --- ניקוי: מחיקת קבצים ישנים מהחנות ---
-                # זה השלב הקריטי שמונע כפילויות!
-                existing_files = client.beta.vector_stores.files.list(vector_store_id=vs_id)
-                for file in existing_files:
+                # מחיקת קבצים ישנים למניעת בלבול
+                for file in client.beta.vector_stores.files.list(vector_store_id=vs_id):
                     try:
                         client.beta.vector_stores.files.delete(vector_store_id=vs_id, file_id=file.id)
-                    except:
-                        pass # מתעלמים משגיאות מחיקה בודדות
+                    except: pass
             else:
-                # יצירה חדשה אם אין
                 vs = client.beta.vector_stores.create(name="ShopiPet Store")
                 vs_id = vs.id
                 client.beta.assistants.update(
@@ -116,26 +120,18 @@ class handler(BaseHTTPRequestHandler):
                     tool_resources={"file_search": {"vector_store_ids": [vs_id]}}
                 )
 
-            # העלאת הקובץ החדש והנקי
             with open(file_path, "rb") as f:
-                client.beta.vector_stores.files.upload_and_poll(
-                    vector_store_id=vs_id,
-                    file=f
-                )
+                client.beta.vector_stores.files.upload_and_poll(vector_store_id=vs_id, file=f)
 
             response_data = {
                 "status": "success",
-                "message": "Catalog synced & Cleaned (Old files removed)",
-                "products_count": len(products) if products else 0,
-                "vector_store_id": vs_id
+                "message": "Catalog Synced (Merged Identifiers)",
+                "products_count": len(products),
+                "preview_sample": content[:400]
             }
 
         except Exception as e:
             print(f"ERROR: {traceback.format_exc()}")
-            response_data = {
-                "status": "error",
-                "error": str(e),
-                "location": "Handler Logic"
-            }
+            response_data = {"status": "error", "error": str(e)}
 
         self.wfile.write(json.dumps(response_data).encode('utf-8'))
