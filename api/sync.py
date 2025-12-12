@@ -34,7 +34,7 @@ class handler(BaseHTTPRequestHandler):
                 timeout=60
             )
             
-            # משיכת 100 מוצרים (אפשר להגדיל או לעשות לולאה בהמשך)
+            # משיכת 100 מוצרים (או יותר בלולאה אם צריך)
             products_res = wcapi.get("products", params={"per_page": 100, "status": "publish"})
             
             if products_res.status_code != 200:
@@ -42,100 +42,51 @@ class handler(BaseHTTPRequestHandler):
                  
             products = products_res.json()
             
-            # --- 2. עיבוד הנתונים לקובץ טקסט עשיר ---
+            # --- 2. עיבוד הנתונים לקובץ טקסט ---
             content = ""
             if products:
                 for p in products:
-                    # מזהה טכני (לשימוש הפונקציות)
                     system_id = p.get('id')
-                    
-                    # --- לוגיקה חכמה למציאת מק"ט/GTIN ---
-                    display_sku = p.get('sku') # ברירת מחדל: המק"ט של ווקומרס
-                    
-                    # אם אין מק"ט רגיל, מחפשים GTIN בנתונים הנוספים
-                    if not display_sku:
-                        for meta in p.get('meta_data', []):
-                            # בדיקת מפתחות נפוצים של תוספי ברקוד
-                            if meta.get('key') in ['_gtin', 'gtin', 'gtin_code', '_ean', 'ean_code', 'barcode']:
-                                display_sku = meta.get('value')
-                                break
-                    
-                    # אם עדיין לא מצאנו, נציין שאין
-                    if not display_sku:
-                        display_sku = "ללא"
-
                     name = p.get('name', 'N/A')
                     link = p.get('permalink', '')
                     
+                    # --- לוגיקה לזיהוי מק"ט (כולל ברקודים) ---
+                    display_sku = p.get('sku')
+                    if not display_sku:
+                        # חיפוש בשדות Meta נפוצים לברקודים
+                        for meta in p.get('meta_data', []):
+                            if meta.get('key') in ['_gtin', 'gtin', 'gtin_code', '_ean', 'ean_code', 'barcode']:
+                                display_sku = meta.get('value')
+                                break
+                    if not display_sku:
+                        display_sku = "ללא"
+
                     # נתונים נוספים
-                    rating = p.get('average_rating', '0')
-                    total_sales = p.get('total_sales', 0)
+                    price = p.get('price', '') + " שח"
+                    stock = "במלאי" if p.get('stock_status') == 'instock' else "חסר"
                     
-                    social_proof = ""
-                    if float(rating) > 0:
-                        social_proof = f"דירוג: {rating}/5"
-                    if isinstance(total_sales, int) and total_sales > 10:
-                        social_proof += f" | נמכר {total_sales} פעמים"
-
-                    # מחירים ומבצעים
-                    regular_price = p.get('regular_price', '')
-                    sale_price = p.get('sale_price', '')
-                    on_sale = p.get('on_sale', False)
-                    date_on_sale_to = p.get('date_on_sale_to', '') 
-
-                    price_display = f"{regular_price} שח"
-                    if on_sale and sale_price:
-                        price_display = f"מבצע: {sale_price} שח (במקום {regular_price})"
-                        if date_on_sale_to:
-                            price_display += f" - עד {date_on_sale_to}"
-
-                    # מלאי
-                    stock_status = "במלאי" if p.get('stock_status') == 'instock' else "חסר במלאי"
-                    
-                    # טקסונומיות
-                    categories = ", ".join([c['name'] for c in p.get('categories', [])])
-                    tags = ", ".join([t['name'] for t in p.get('tags', [])])
-                    
-                    # מאפיינים
-                    attributes_list = []
-                    for attr in p.get('attributes', []):
-                        opts = ", ".join(attr.get('options', []))
-                        attributes_list.append(f"{attr.get('name')}: {opts}")
-                    attributes_str = " | ".join(attributes_list)
-
                     # ניקוי תיאור
                     raw_desc = str(p.get('short_description', '')) + " " + str(p.get('description', ''))
-                    clean_desc = raw_desc.replace('<p>', '').replace('</p>', '').replace('<br>', '\n').replace('&nbsp;', ' ').strip()
-                    if len(clean_desc) > 350:
-                        clean_desc = clean_desc[:350] + "..."
+                    clean_desc = raw_desc.replace('<p>', '').replace('</p>', '').replace('<br>', '\n').strip()
+                    if len(clean_desc) > 300: clean_desc = clean_desc[:300] + "..."
 
-                    # --- בניית הבלוק למוצר ---
+                    # פורמט הבלוק
                     content += f"--- מוצר ---\n"
-                    content += f"System_ID: {system_id}\n"  # מזהה למערכת בלבד
-                    content += f"מק\"ט: {display_sku}\n"      # המק"ט שיוצג ללקוח
+                    content += f"ID: {system_id}\n"
+                    content += f"SKU: {display_sku}\n" # תווית ברורה ל-AI
                     content += f"שם: {name}\n"
-                    content += f"קטגוריות: {categories}\n"
-                    if tags:
-                        content += f"תגיות: {tags}\n"
-                    content += f"מחיר: {price_display}\n"
-                    content += f"מצב מלאי: {stock_status}\n"
-                    if social_proof:
-                        content += f"פופולריות: {social_proof}\n"
-                    if attributes_str:
-                        content += f"מאפיינים: {attributes_str}\n"
+                    content += f"מחיר: {price}\n"
+                    content += f"מלאי: {stock}\n"
                     content += f"תיאור: {clean_desc}\n"
-                    content += f"קישור: {link}\n"
                     content += f"------------\n\n"
-
             else:
-                content = "No products found in store."
+                content = "No products found."
 
-            # שמירה לקובץ זמני
             file_path = "/tmp/catalog.txt"
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            # --- 3. העלאה ל-OpenAI ---
+            # --- 3. עדכון OpenAI (כולל מחיקת הישן) ---
             client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
             assistant_id = os.environ.get("OPENAI_ASSISTANT_ID")
             
@@ -143,9 +94,21 @@ class handler(BaseHTTPRequestHandler):
             tool_res = my_assistant.tool_resources
             
             vs_id = None
+            
+            # איתור ה-Vector Store הקיים
             if tool_res and tool_res.file_search and tool_res.file_search.vector_store_ids:
                 vs_id = tool_res.file_search.vector_store_ids[0]
+                
+                # --- ניקוי: מחיקת קבצים ישנים מהחנות ---
+                # זה השלב הקריטי שמונע כפילויות!
+                existing_files = client.beta.vector_stores.files.list(vector_store_id=vs_id)
+                for file in existing_files:
+                    try:
+                        client.beta.vector_stores.files.delete(vector_store_id=vs_id, file_id=file.id)
+                    except:
+                        pass # מתעלמים משגיאות מחיקה בודדות
             else:
+                # יצירה חדשה אם אין
                 vs = client.beta.vector_stores.create(name="ShopiPet Store")
                 vs_id = vs.id
                 client.beta.assistants.update(
@@ -153,6 +116,7 @@ class handler(BaseHTTPRequestHandler):
                     tool_resources={"file_search": {"vector_store_ids": [vs_id]}}
                 )
 
+            # העלאת הקובץ החדש והנקי
             with open(file_path, "rb") as f:
                 client.beta.vector_stores.files.upload_and_poll(
                     vector_store_id=vs_id,
@@ -161,7 +125,7 @@ class handler(BaseHTTPRequestHandler):
 
             response_data = {
                 "status": "success",
-                "message": "Full Catalog Sync Completed (SKU Fixed)",
+                "message": "Catalog synced & Cleaned (Old files removed)",
                 "products_count": len(products) if products else 0,
                 "vector_store_id": vs_id
             }
@@ -171,7 +135,7 @@ class handler(BaseHTTPRequestHandler):
             response_data = {
                 "status": "error",
                 "error": str(e),
-                "location": "Inside Handler Logic"
+                "location": "Handler Logic"
             }
 
         self.wfile.write(json.dumps(response_data).encode('utf-8'))
