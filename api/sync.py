@@ -3,10 +3,9 @@ import json
 import os
 import traceback
 
-# Vercel מחפש את המחלקה הזו בדיוק בשם הזה
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # 1. שליחת כותרות תקינות מיד (כדי למנוע timeout/404)
+        # 1. שליחת כותרות תקינות מיד
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
@@ -14,8 +13,7 @@ class handler(BaseHTTPRequestHandler):
         response_data = {}
 
         try:
-            # --- טעינת ספריות בתוך הפונקציה (Lazy Loading) ---
-            # זה מונע קריסה של ה-Handler אם יש בעיה בהתקנות
+            # --- טעינת ספריות בתוך הפונקציה ---
             try:
                 from openai import OpenAI
                 from woocommerce import API
@@ -53,7 +51,7 @@ class handler(BaseHTTPRequestHandler):
                     name = p.get('name', 'N/A')
                     price = p.get('price', '0')
                     link = p.get('permalink', '')
-                    # ניקוי תגיות HTML פשוט
+                    # תיקון התגיות - החלפת תגיות HTML ריקות בקוד תקין
                     desc = str(p.get('short_description', '')).replace('<p>', '').replace('</p>', '').strip()
                     content += f"מוצר: {name}\nמחיר: {price}\nתיאור: {desc}\nקישור: {link}\n\n"
             else:
