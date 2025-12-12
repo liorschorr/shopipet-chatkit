@@ -5,7 +5,6 @@ import traceback
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # כותרות תגובה למניעת Timeout
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
@@ -32,10 +31,10 @@ class handler(BaseHTTPRequestHandler):
                 consumer_key=os.environ.get("WOO_CONSUMER_KEY"),
                 consumer_secret=os.environ.get("WOO_CONSUMER_SECRET"),
                 version="wc/v3",
-                timeout=60 # הארכתי מעט כי המידע עשיר יותר
+                timeout=60
             )
             
-            # מושכים 100 מוצרים
+            # משיכת 100 מוצרים (אפשר להגדיל או לעשות לולאה בהמשך)
             products_res = wcapi.get("products", params={"per_page": 100, "status": "publish"})
             
             if products_res.status_code != 200:
@@ -47,22 +46,36 @@ class handler(BaseHTTPRequestHandler):
             content = ""
             if products:
                 for p in products:
-                    # זיהוי בסיסי
-                    p_id = p.get('id')
-                    sku = p.get('sku', 'N/A')
+                    # מזהה טכני (לשימוש הפונקציות)
+                    system_id = p.get('id')
+                    
+                    # --- לוגיקה חכמה למציאת מק"ט/GTIN ---
+                    display_sku = p.get('sku') # ברירת מחדל: המק"ט של ווקומרס
+                    
+                    # אם אין מק"ט רגיל, מחפשים GTIN בנתונים הנוספים
+                    if not display_sku:
+                        for meta in p.get('meta_data', []):
+                            # בדיקת מפתחות נפוצים של תוספי ברקוד
+                            if meta.get('key') in ['_gtin', 'gtin', 'gtin_code', '_ean', 'ean_code', 'barcode']:
+                                display_sku = meta.get('value')
+                                break
+                    
+                    # אם עדיין לא מצאנו, נציין שאין
+                    if not display_sku:
+                        display_sku = "ללא"
+
                     name = p.get('name', 'N/A')
                     link = p.get('permalink', '')
                     
-                    # פופולריות ודירוג (Social Proof)
+                    # נתונים נוספים
                     rating = p.get('average_rating', '0')
-                    rating_count = p.get('rating_count', 0)
                     total_sales = p.get('total_sales', 0)
                     
                     social_proof = ""
                     if float(rating) > 0:
-                        social_proof = f"דירוג: {rating}/5 (מתוך {rating_count} מדרגים)"
+                        social_proof = f"דירוג: {rating}/5"
                     if isinstance(total_sales, int) and total_sales > 10:
-                        social_proof += f" | נמכר {total_sales} פעמים (מוצר פופולרי)"
+                        social_proof += f" | נמכר {total_sales} פעמים"
 
                     # מחירים ומבצעים
                     regular_price = p.get('regular_price', '')
@@ -79,11 +92,11 @@ class handler(BaseHTTPRequestHandler):
                     # מלאי
                     stock_status = "במלאי" if p.get('stock_status') == 'instock' else "חסר במלאי"
                     
-                    # קטגוריות ותגיות (חשוב מאוד לסינון)
+                    # טקסונומיות
                     categories = ", ".join([c['name'] for c in p.get('categories', [])])
                     tags = ", ".join([t['name'] for t in p.get('tags', [])])
                     
-                    # מאפיינים (Attributes)
+                    # מאפיינים
                     attributes_list = []
                     for attr in p.get('attributes', []):
                         opts = ", ".join(attr.get('options', []))
@@ -93,17 +106,17 @@ class handler(BaseHTTPRequestHandler):
                     # ניקוי תיאור
                     raw_desc = str(p.get('short_description', '')) + " " + str(p.get('description', ''))
                     clean_desc = raw_desc.replace('<p>', '').replace('</p>', '').replace('<br>', '\n').replace('&nbsp;', ' ').strip()
-                    if len(clean_desc) > 350: # שומרים יותר טקסט כי התיאור חשוב
+                    if len(clean_desc) > 350:
                         clean_desc = clean_desc[:350] + "..."
 
-                    # --- בניית הבלוק למוצר (הפורמט שה-AI קורא) ---
+                    # --- בניית הבלוק למוצר ---
                     content += f"--- מוצר ---\n"
-                    content += f"ID: {p_id}\n"
-                    content += f"SKU (מק\"ט): {sku}\n"
+                    content += f"System_ID: {system_id}\n"  # מזהה למערכת בלבד
+                    content += f"מק\"ט: {display_sku}\n"      # המק"ט שיוצג ללקוח
                     content += f"שם: {name}\n"
                     content += f"קטגוריות: {categories}\n"
                     if tags:
-                        content += f"תגיות (מידע חשוב): {tags}\n"
+                        content += f"תגיות: {tags}\n"
                     content += f"מחיר: {price_display}\n"
                     content += f"מצב מלאי: {stock_status}\n"
                     if social_proof:
@@ -148,7 +161,7 @@ class handler(BaseHTTPRequestHandler):
 
             response_data = {
                 "status": "success",
-                "message": "Full Rich Catalog Sync Completed",
+                "message": "Full Catalog Sync Completed (SKU Fixed)",
                 "products_count": len(products) if products else 0,
                 "vector_store_id": vs_id
             }
