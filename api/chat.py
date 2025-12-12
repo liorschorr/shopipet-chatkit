@@ -6,18 +6,19 @@ import requests
 from openai import OpenAI
 
 # הגדרות
+# Ensure these are set in your environment
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID") # נצטרך להוסיף את זה ל-Vercel
+ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID")
 
-# --- פונקציית העזר (הכלי שה-Agent משתמש בו) ---
 def check_woocommerce_order(phone):
-    url = os.environ.get("WOO_BASE_URL") # שים לב לשם המשתנה!
+    print(f"DEBUG: Checking order for phone {phone}") # Log tool usage
+    url = os.environ.get("WOO_BASE_URL")
     key = os.environ.get("WOO_CONSUMER_KEY")
     secret = os.environ.get("WOO_CONSUMER_SECRET")
     
     try:
-        # חיפוש הזמנה בווקומרס
         res = requests.get(f"{url}/wp-json/wc/v3/orders", auth=(key, secret), params={"search": phone})
+        res.raise_for_status() # Check for HTTP errors
         orders = res.json()
         
         if not orders:
@@ -33,6 +34,7 @@ def check_woocommerce_order(phone):
             "items": items_list
         })
     except Exception as e:
+        print(f"ERROR in check_woocommerce_order: {e}") # Log function errors
         return json.dumps({"error": str(e)})
 
 class handler(BaseHTTPRequestHandler):
@@ -49,13 +51,15 @@ class handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length))
             
             user_msg = body.get("message", "")
-            # ה-Frontend ישלח לנו thread_id אם זו שיחה ממשיכה
             thread_id = body.get("thread_id")
+
+            print(f"DEBUG: Processing message: {user_msg} | Thread: {thread_id}")
 
             # 1. ניהול שיחה (Thread)
             if not thread_id:
                 thread = client.beta.threads.create()
                 thread_id = thread.id
+                print(f"DEBUG: Created new thread {thread_id}")
             
             # הוספת הודעת המשתמש
             client.beta.threads.messages.create(
@@ -70,19 +74,28 @@ class handler(BaseHTTPRequestHandler):
                 assistant_id=ASSISTANT_ID
             )
 
-            # 3. לולאת המתנה (Polling) - מחכים שה-Agent יחליט
+            # 3. לולאת המתנה (Polling)
             bot_reply = ""
+            start_time = time.time()
+            
             while True:
+                # BREAK LOOP if it takes too long (e.g., 50 seconds for Vercel limit)
+                if time.time() - start_time > 50:
+                    bot_reply = "Error: Timeout waiting for AI response."
+                    print("DEBUG: Function timed out")
+                    break
+
                 run_status = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+                print(f"DEBUG: Run status: {run_status.status}") # CRITICAL LOG
                 
                 if run_status.status == 'completed':
-                    # ה-Agent סיים לחשוב
                     msgs = client.beta.threads.messages.list(thread_id=thread_id)
+                    # Get the latest message (first in list)
                     bot_reply = msgs.data[0].content[0].text.value
                     break
                 
                 elif run_status.status == 'requires_action':
-                    # ה-Agent מבקש להפעיל כלי (בדיקת הזמנה)
+                    print("DEBUG: Run requires action (tool call)")
                     tool_calls = run_status.required_action.submit_tool_outputs.tool_calls
                     tool_outputs = []
                     
@@ -90,35 +103,41 @@ class handler(BaseHTTPRequestHandler):
                         if tool.function.name == "get_order_status":
                             args = json.loads(tool.function.arguments)
                             phone = args.get("phone")
-                            # הפעלת הפונקציה שלנו בפייתון
                             output = check_woocommerce_order(phone)
+                            print(f"DEBUG: Tool output: {output}")
                             tool_outputs.append({"tool_call_id": tool.id, "output": output})
                     
-                    # החזרת התשובה ל-Agent
-                    client.beta.threads.runs.submit_tool_outputs(
-                        thread_id=thread_id,
-                        run_id=run.id,
-                        tool_outputs=tool_outputs
-                    )
-                
-                elif run_status.status in ['failed', 'expired']:
-                    bot_reply = "נתקלתי בבעיה טכנית. נסה שוב."
+                    if tool_outputs:
+                        client.beta.threads.runs.submit_tool_outputs(
+                            thread_id=thread_id,
+                            run_id=run.id,
+                            tool_outputs=tool_outputs
+                        )
+                    else:
+                        print("DEBUG: No matching tool found for requires_action")
+
+                elif run_status.status in ['failed', 'expired', 'cancelled']:
+                    # Extract error details if available
+                    error_msg = run_status.last_error.message if run_status.last_error else "Unknown error"
+                    print(f"DEBUG: Run failed/expired. Error: {error_msg}")
+                    bot_reply = "נתקלתי בבעיה טכנית בעיבוד הבקשה."
                     break
                 
-                time.sleep(1) # ממתינים שנייה
+                time.sleep(1)
 
-            # ניקוי הערות שוליים של OpenAI [source]
+            # Clean response
             import re
             bot_reply = re.sub(r'【.*?】', '', bot_reply)
+            
+            print(f"DEBUG: Final Reply: {bot_reply}")
 
-            # החזרת תשובה + Thread ID (כדי שהדפדפן יזכור את השיחה)
             response_data = {
                 "message": bot_reply,
                 "thread_id": thread_id 
             }
 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"CRITICAL ERROR: {e}")
             response_data = {"error": str(e)}
 
         self.send_response(200)
