@@ -9,3 +9,4 @@ class handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(json.dumps({"status": "ok", "service": "ShopiPet ChatKit"}).encode('utf-8'))
+##ךלגיהךקקלק
