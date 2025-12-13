@@ -96,20 +96,134 @@
         }
         .msg.error { background: #ffebee; color: #c62828; align-self: center; font-size: 13px; text-align: center;}
 
-        /* כרטיסיות מוצר */
+        /* כרטיסיות מוצר - עיצוב אופקי חדש */
         .product-card {
-            background: white; border: 1px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            border-radius: 12px; padding: 10px; margin: 5px 0; width: 100%; text-align: center;
+            background: white;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border-radius: 12px;
+            padding: 12px;
+            margin: 8px 0;
+            width: 100%;
             direction: rtl;
+            display: flex;
+            flex-direction: row-reverse; /* תמונה בצד ימין */
+            gap: 12px;
+            align-items: stretch;
+            transition: box-shadow 0.2s;
         }
-        .product-image { width: 90px; height: 90px; object-fit: contain; margin: 0 auto; display: block; }
-        .product-title { font-size: 14px; font-weight: bold; color: #333; text-decoration: none; display: block; margin: 5px 0; }
-        .product-price { font-size: 14px; font-weight: bold; color: ${COLORS.primary}; }
-        .old-price { text-decoration: line-through; color: #999; font-size: 12px; margin-left: 5px; }
-        
+        .product-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        /* תמונת מוצר - צד ימין */
+        .product-image-wrapper {
+            flex-shrink: 0;
+            width: 80px;
+            height: 80px;
+        }
+        .product-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+            display: block;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .product-image:hover {
+            transform: scale(1.05);
+        }
+
+        /* אזור תוכן - צד שמאל */
+        .product-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-width: 0; /* מאפשר ellipsis */
+        }
+
+        /* כותרת מוצר */
+        .product-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            text-decoration: none;
+            display: block;
+            margin: 0 0 4px 0;
+            line-height: 1.3;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .product-title:hover {
+            color: ${COLORS.primary};
+        }
+
+        /* תיאור מוצר */
+        .product-description {
+            font-size: 12px;
+            color: #666;
+            line-height: 1.4;
+            margin: 0 0 8px 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* שורת פעולה תחתונה */
+        .product-action-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: nowrap;
+        }
+
+        /* מחירים */
+        .product-price-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .product-price {
+            font-size: 15px;
+            font-weight: bold;
+            color: ${COLORS.primary};
+            white-space: nowrap;
+        }
+        .product-old-price {
+            font-size: 12px;
+            color: #999;
+            text-decoration: line-through;
+            white-space: nowrap;
+        }
+
+        /* כפתור הוספה לסל */
         .add-cart-btn {
-            background: #333; color: white; padding: 6px 0; width: 100%; display: block;
-            border-radius: 20px; text-decoration: none; font-size: 13px; margin-top: 5px;
+            background: ${COLORS.primary};
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: background 0.2s, transform 0.1s;
+            cursor: pointer;
+            border: none;
+            display: inline-block;
+        }
+        .add-cart-btn:hover {
+            background: #c2185b;
+            transform: translateY(-1px);
+        }
+        .add-cart-btn:active {
+            transform: translateY(0);
         }
 
         /* חיווי הקלדה */
@@ -363,21 +477,57 @@
         scrollToBottom();
     }
 
-    // כרטיסיות
+    // כרטיסיות מוצר - עיצוב אופקי חדש
     function renderProducts(products) {
         products.forEach(p => {
             const card = document.createElement('div');
             card.className = 'product-card';
-            let priceHtml = `<div class="product-price">${p.price}</div>`;
+
+            // בניית HTML של המחיר
+            let priceHtml;
             if (p.on_sale) {
-                priceHtml = `<div class="product-price">${p.sale_price} <span class="old-price">${p.regular_price}</span></div>`;
+                priceHtml = `
+                    <div class="product-price-container">
+                        <span class="product-price">${p.sale_price}</span>
+                        <span class="product-old-price">${p.regular_price}</span>
+                    </div>
+                `;
+            } else {
+                priceHtml = `
+                    <div class="product-price-container">
+                        <span class="product-price">${p.price}</span>
+                    </div>
+                `;
             }
+
+            // בניית התיאור (אם קיים)
+            const descriptionHtml = p.short_description
+                ? `<div class="product-description">${p.short_description}</div>`
+                : '';
+
+            // בניית הכרטיסייה המלאה
             card.innerHTML = `
-                <a href="${p.permalink}" target="_blank"><img src="${p.image}" class="product-image"></a>
-                <a href="${p.permalink}" target="_blank" class="product-title">${p.name}</a>
-                ${priceHtml}
-                <a href="${p.add_to_cart_url}" target="_blank" class="add-cart-btn">הוסף לסל 🛒</a>
+                <div class="product-image-wrapper">
+                    <a href="${p.permalink}" target="_blank" rel="noopener noreferrer">
+                        <img src="${p.image}" alt="${p.name}" class="product-image">
+                    </a>
+                </div>
+                <div class="product-content">
+                    <div>
+                        <a href="${p.permalink}" target="_blank" rel="noopener noreferrer" class="product-title">
+                            ${p.name}
+                        </a>
+                        ${descriptionHtml}
+                    </div>
+                    <div class="product-action-row">
+                        ${priceHtml}
+                        <a href="${p.add_to_cart_url}" target="_blank" rel="noopener noreferrer" class="add-cart-btn">
+                            הוסף לסל 🛒
+                        </a>
+                    </div>
+                </div>
             `;
+
             messages.appendChild(card);
         });
         scrollToBottom();
