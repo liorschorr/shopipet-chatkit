@@ -98,6 +98,38 @@
         }
         .msg.error { background: #ffebee; color: #c62828; align-self: center; font-size: 13px; text-align: center;}
 
+        /* חותמת זמן בהודעה */
+        .msg-timestamp {
+            font-size: 10px;
+            color: rgba(0,0,0,0.45);
+            margin-top: 4px;
+            text-align: left;
+            direction: ltr;
+        }
+        .msg.bot .msg-timestamp {
+            color: rgba(0,0,0,0.45);
+        }
+        .msg.user .msg-timestamp {
+            color: rgba(255,255,255,0.7);
+        }
+
+        /* כותרת תאריך צפה (סגנון WhatsApp) */
+        .date-divider {
+            text-align: center;
+            margin: 16px 0 12px 0;
+            position: relative;
+        }
+        .date-divider-text {
+            background: rgba(225, 245, 254, 0.92);
+            color: #667781;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 5px 12px;
+            border-radius: 7.5px;
+            display: inline-block;
+            box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+        }
+
         /* כרטיסיות מוצר - עיצוב אופקי חדש */
         .product-card {
             background: white;
@@ -344,6 +376,56 @@
         .typing {
             font-size: 12px; color: #666; font-style: italic;
             margin-right: 10px; align-self: flex-end; text-align: right;
+            display: none;
+        }
+
+        /* נקודות מהבהבות בזמן המתנה */
+        .typing-dots {
+            background: ${COLORS.secondary};
+            padding: 10px 16px;
+            border-radius: 18px;
+            align-self: flex-end;
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            margin: 4px 0;
+        }
+        .typing-dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.4);
+            animation: typingDot 1.4s infinite;
+        }
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingDot {
+            0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
+            30% { opacity: 1; transform: scale(1); }
+        }
+
+        /* סטטוס הקלדה בכותרת */
+        .chat-header {
+            position: relative;
+        }
+        .typing-status {
+            position: absolute;
+            bottom: -2px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: #667781;
+            font-weight: normal;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .typing-status.show {
+            opacity: 1;
         }
 
         /* כפתורי פעולה מהירה */
@@ -525,7 +607,11 @@
         <div id="shopipet-welcome-bubble">איך אפשר לעזור? 🐾</div>
         <div id="shopipet-trigger"><img src="${ICON_URL}"></div>
         <div id="shopipet-widget" dir="rtl">
-            <div class="chat-header"><span>שופיבוט</span><span id="shopipet-close" style="cursor:pointer;">&times;</span></div>
+            <div class="chat-header">
+                <span>שופיבוט</span>
+                <span class="typing-status">מקליד...</span>
+                <span id="shopipet-close" style="cursor:pointer;">&times;</span>
+            </div>
             <div id="shopipet-messages" class="chat-messages"></div>
             <div class="chat-input-area">
                 <input type="text" id="shopipet-input" placeholder="כתוב כאן..." autocomplete="off">
@@ -681,7 +767,7 @@
     }
 
     // טיפול בפעולות מהירות עם תשובות ברירת מחדל
-    function handleQuickAction(action) {
+    async function handleQuickAction(action) {
         let response = '';
 
         if (action === 'מוצרים') {
@@ -703,6 +789,20 @@
             setTimeout(() => {
                 addMessage(response, 'bot');
             }, 500);
+
+            // שליחה ל-OpenAI כדי לשמור בהיסטוריה
+            try {
+                await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        message: action,
+                        thread_id: localStorage.getItem(STORAGE_KEY)
+                    })
+                });
+            } catch (e) {
+                console.error('Failed to sync with OpenAI:', e);
+            }
         }
     }
 
@@ -871,27 +971,92 @@
         }
     });
 
+    // פונקציות עזר לתאריכים (שעון ירושלים)
+    function getJerusalemTime() {
+        return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Jerusalem"}));
+    }
+
+    function formatTime(date) {
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+    }
+
+    function getDateLabel(date) {
+        const now = getJerusalemTime();
+        const msgDate = new Date(date);
+
+        // Reset time to compare dates only
+        const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const msgDay = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate());
+
+        const diffDays = Math.floor((nowDay - msgDay) / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) return 'היום';
+        if (diffDays === 1) return 'אתמול';
+        if (diffDays < 7) {
+            const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+            return `יום ${days[msgDate.getDay()]}`;
+        }
+
+        return `${msgDate.getDate()}/${msgDate.getMonth() + 1}/${msgDate.getFullYear()}`;
+    }
+
+    function shouldShowDateDivider(timestamp) {
+        const lastMsg = messages.querySelector('.msg:last-of-type');
+        if (!lastMsg) return true;
+
+        const lastTimestamp = lastMsg.getAttribute('data-timestamp');
+        if (!lastTimestamp) return true;
+
+        const lastDate = new Date(parseInt(lastTimestamp));
+        const currentDate = new Date(timestamp);
+
+        return lastDate.getDate() !== currentDate.getDate() ||
+               lastDate.getMonth() !== currentDate.getMonth() ||
+               lastDate.getFullYear() !== currentDate.getFullYear();
+    }
+
     // הוספת הודעה
     function addMessage(text, type) {
+        const timestamp = Date.now();
+        const jerusalemTime = getJerusalemTime();
+
+        // הוספת מפריד תאריך אם צריך
+        if (shouldShowDateDivider(timestamp)) {
+            const dateDivider = document.createElement('div');
+            dateDivider.className = 'date-divider';
+            dateDivider.innerHTML = `<span class="date-divider-text">${getDateLabel(jerusalemTime)}</span>`;
+            messages.appendChild(dateDivider);
+        }
+
         const div = document.createElement('div');
         div.className = `msg ${type}`;
+        div.setAttribute('data-timestamp', timestamp);
+
+        const timeStr = formatTime(jerusalemTime);
 
         if (type === 'bot') {
             messages.appendChild(div);
-            let i = 0; div.innerHTML = '';
+            let i = 0;
+            let content = '';
             function typeChar() {
                 if (i < text.length) {
-                    div.innerHTML += text.charAt(i); i++;
+                    content += text.charAt(i);
+                    div.innerHTML = content + `<div class="msg-timestamp">${timeStr}</div>`;
+                    i++;
                     setTimeout(typeChar, 10);
                     messages.scrollTop = messages.scrollHeight;
                 } else {
+                    // הסרת "מקליד..." מהכותרת כשהבוט סיים
+                    hideTyping();
                     // שמירה אחרי שההודעה הושלמה
                     saveConversation();
                 }
             }
             typeChar();
         } else {
-            div.innerText = text;
+            div.innerHTML = `${text}<div class="msg-timestamp">${timeStr}</div>`;
             messages.appendChild(div);
             saveConversation(); // שמירה מיידית
         }
@@ -1140,17 +1305,50 @@
         }
     }
 
-    function showTyping() {
-        const div = document.createElement('div'); div.id='typing'; div.className='typing'; div.innerText='מקליד...';
-        messages.appendChild(div); scrollToBottom();
+    // סטטוס הקלדה ונקודות מהבהבות
+    let typingDotsElement = null;
+    const typingStatus = document.querySelector('.typing-status');
+
+    function showWaitingDots() {
+        // נקודות מהבהבות בזמן שמשרת עובד
+        if (!typingDotsElement) {
+            typingDotsElement = document.createElement('div');
+            typingDotsElement.id = 'typing-dots';
+            typingDotsElement.className = 'typing-dots';
+            typingDotsElement.innerHTML = '<span></span><span></span><span></span>';
+            messages.appendChild(typingDotsElement);
+            scrollToBottom();
+        }
     }
-    function hideTyping() { const el=document.getElementById('typing'); if(el) el.remove(); }
+
+    function showTypingStatus() {
+        // "מקליד..." בכותרת כשהבוט מקליד
+        if (typingStatus) {
+            typingStatus.classList.add('show');
+        }
+    }
+
+    function hideTyping() {
+        // הסרת נקודות מהבהבות
+        if (typingDotsElement) {
+            typingDotsElement.remove();
+            typingDotsElement = null;
+        }
+        // הסרת "מקליד..." מהכותרת
+        if (typingStatus) {
+            typingStatus.classList.remove('show');
+        }
+    }
 
     async function sendMessage() {
         const text = input.value.trim();
         if (!text) return;
         addMessage(text, 'user');
-        input.value = ''; input.disabled = true; showTyping();
+        input.value = '';
+        input.disabled = true;
+
+        // הצגת נקודות מהבהבות בזמן המתנה לשרת
+        showWaitingDots();
 
         try {
             const res = await fetch(`${API_BASE}/chat`, {
@@ -1158,10 +1356,14 @@
                 body: JSON.stringify({ message: text, thread_id: localStorage.getItem(STORAGE_KEY) })
             });
             const data = await res.json();
+
+            // הסרת נקודות והצגת "מקליד..." בכותרת
             hideTyping();
+            showTypingStatus();
+
             if (data.thread_id) localStorage.setItem(STORAGE_KEY, data.thread_id);
 
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 300));
 
             if (data.action === 'show_products' && data.products) {
                 if (data.reply) addMessage(data.reply, 'bot');
@@ -1169,10 +1371,12 @@
             } else if (data.reply) {
                 addMessage(data.reply, 'bot');
             } else if (data.error) {
+                hideTyping();
                 addMessage("שגיאה: " + data.error, 'error');
             }
         } catch (e) {
-            hideTyping(); addMessage("שגיאת תקשורת.", 'error');
+            hideTyping();
+            addMessage("שגיאת תקשורת.", 'error');
         }
         input.disabled = false; input.focus();
     }
