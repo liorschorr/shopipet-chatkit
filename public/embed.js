@@ -937,19 +937,17 @@
         try {
             // WooCommerce AJAX Add to Cart
             const formData = new FormData();
+            formData.append('quantity', 1);
 
             if (productType === 'variable' && variationId) {
-                // Variable product - add variation
+                // Variable product - CRITICAL: use variation_id as add-to-cart value
+                formData.append('product_id', productId);
                 formData.append('variation_id', variationId);
-                formData.append('quantity', 1);
+                formData.append('add-to-cart', variationId);  // Use variation ID, not parent ID
             } else {
-                // Simple product
-                formData.append('quantity', 1);
+                // Simple product - only send add-to-cart (not product_id to avoid doubling)
+                formData.append('add-to-cart', productId);
             }
-
-            // Always append product_id and add-to-cart
-            formData.append('product_id', productId);
-            formData.append('add-to-cart', productId);
 
             const response = await fetch('/?wc-ajax=add_to_cart', {
                 method: 'POST',
