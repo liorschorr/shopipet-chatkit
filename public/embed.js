@@ -160,6 +160,14 @@
             color: ${COLORS.primary};
         }
 
+        /* SKU מוצר */
+        .product-sku {
+            font-size: 11px;
+            color: #999;
+            margin: 0 0 6px 0;
+            font-family: monospace;
+        }
+
         /* תיאור מוצר */
         .product-description {
             font-size: 12px;
@@ -227,9 +235,41 @@
         }
 
         /* חיווי הקלדה */
-        .typing { 
-            font-size: 12px; color: #666; font-style: italic; 
+        .typing {
+            font-size: 12px; color: #666; font-style: italic;
             margin-right: 10px; align-self: flex-end; text-align: right;
+        }
+
+        /* כפתורי פעולה מהירה */
+        .quick-action-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+        .quick-action-btn {
+            background: white;
+            border: 2px solid ${COLORS.primary};
+            color: ${COLORS.primary};
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+            min-width: 120px;
+            text-align: center;
+        }
+        .quick-action-btn:hover {
+            background: ${COLORS.primary};
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(233, 30, 140, 0.3);
+        }
+        .quick-action-btn:active {
+            transform: translateY(0);
         }
 
         /* --- אזור הקלדה --- */
@@ -274,7 +314,7 @@
                 width: 100% !important;
                 max-height: none;
                 border-radius: 0; /* מסך מלא במובייל */
-                display: flex;
+                /* display מוגדר ב-JS בלבד - לא כאן! */
                 flex-direction: column;
 
                 /* מבטיח שהווידג'ט יתמקם נכון בתוך ה-Visual Viewport */
@@ -339,11 +379,48 @@
     setTimeout(() => bubble.classList.remove('show'), 11000);
     bubble.onclick = () => { bubble.remove(); trigger.click(); };
 
+    // הצגת הודעת ברוכים הבאים עם כפתורי פעולה
+    function showWelcomeMessage() {
+        // בדיקה אם כבר הוצגה הודעת הברוכים הבאים
+        if (messages.children.length > 0) return;
+
+        const welcomeDiv = document.createElement('div');
+        welcomeDiv.className = 'msg bot';
+        welcomeDiv.innerHTML = 'נעים להכיר, שמי שופיבוט, התפקיד שלי הוא לסייע לכם למצוא את המוצרים שאתם צריכים.<br>באיזה תחום אוכל לסייע?';
+        messages.appendChild(welcomeDiv);
+
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'quick-action-buttons';
+        buttonsDiv.innerHTML = `
+            <button class="quick-action-btn" data-action="מוצרים">מוצרים 🛍️</button>
+            <button class="quick-action-btn" data-action="בירור הזמנות">בירור הזמנות 📦</button>
+        `;
+        messages.appendChild(buttonsDiv);
+
+        // הוספת אירועים לכפתורים
+        buttonsDiv.querySelectorAll('.quick-action-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-action');
+                // מחיקת הכפתורים
+                buttonsDiv.remove();
+                // שליחת ההודעה כאילו המשתמש כתב אותה
+                input.value = action;
+                sendMessage();
+            });
+        });
+
+        scrollToBottom();
+    }
+
     // פתיחה/סגירה
     trigger.onclick = () => {
         widget.style.display = 'flex';
         trigger.style.display = 'none';
         bubble.remove();
+
+        // הצגת הודעת ברוכים הבאים
+        showWelcomeMessage();
+
         setTimeout(scrollToBottom, 100);
 
         // טריגר ראשוני לחישוב גובה (למקרה שהדפדפן צריך ניעור)
@@ -500,6 +577,11 @@
                 `;
             }
 
+            // בניית SKU (אם קיים)
+            const skuHtml = p.sku
+                ? `<div class="product-sku">מק"ט: ${p.sku}</div>`
+                : '';
+
             // בניית התיאור (אם קיים)
             const descriptionHtml = p.short_description
                 ? `<div class="product-description">${p.short_description}</div>`
@@ -517,20 +599,73 @@
                         <a href="${p.permalink}" target="_blank" rel="noopener noreferrer" class="product-title">
                             ${p.name}
                         </a>
+                        ${skuHtml}
                         ${descriptionHtml}
                     </div>
                     <div class="product-action-row">
                         ${priceHtml}
-                        <a href="${p.add_to_cart_url}" rel="noopener noreferrer" class="add-cart-btn">
+                        <button class="add-cart-btn" data-product-id="${p.id}">
                             הוסף לסל 🛒
-                        </a>
+                        </button>
                     </div>
                 </div>
             `;
 
+            // Add event listener for add-to-cart button
+            const addToCartBtn = card.querySelector('.add-cart-btn');
+            addToCartBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                addToCart(p.id, addToCartBtn);
+            });
+
             messages.appendChild(card);
         });
         scrollToBottom();
+    }
+
+    // פונקציה להוספה לסל (AJAX)
+    async function addToCart(productId, buttonElement) {
+        const originalText = buttonElement.innerHTML;
+        buttonElement.innerHTML = 'מוסיף...';
+        buttonElement.disabled = true;
+
+        try {
+            // WooCommerce AJAX Add to Cart
+            const formData = new FormData();
+            formData.append('product_id', productId);
+            formData.append('quantity', 1);
+
+            const response = await fetch('/?wc-ajax=add_to_cart', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                buttonElement.innerHTML = 'שגיאה ❌';
+                setTimeout(() => {
+                    buttonElement.innerHTML = originalText;
+                    buttonElement.disabled = false;
+                }, 2000);
+            } else {
+                buttonElement.innerHTML = 'נוסף! ✓';
+                setTimeout(() => {
+                    buttonElement.innerHTML = originalText;
+                    buttonElement.disabled = false;
+                }, 2000);
+
+                // Trigger WooCommerce cart update event (if needed)
+                document.body.dispatchEvent(new Event('wc_fragment_refresh'));
+            }
+        } catch (error) {
+            console.error('Add to cart error:', error);
+            buttonElement.innerHTML = 'שגיאה ❌';
+            setTimeout(() => {
+                buttonElement.innerHTML = originalText;
+                buttonElement.disabled = false;
+            }, 2000);
+        }
     }
 
     function showTyping() {

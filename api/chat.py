@@ -121,9 +121,13 @@ class handler(BaseHTTPRequestHandler):
                                                 # Remove extra whitespace
                                                 short_desc = ' '.join(short_desc.split())
 
+                                            # Get SKU
+                                            sku = p.get('sku', '')
+
                                             products_data.append({
                                                 "id": p.get('id'),
                                                 "name": p.get('name'),
+                                                "sku": sku,
                                                 "price": f"{p.get('price')} ₪",
                                                 "regular_price": f"{p.get('regular_price')} ₪",
                                                 "sale_price": f"{p.get('sale_price')} ₪",
