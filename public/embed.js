@@ -940,12 +940,13 @@
             formData.append('quantity', 1);
 
             if (productType === 'variable' && variationId) {
-                // Variable product - CRITICAL: use variation_id as add-to-cart value
+                // Variable product: send parent product_id, variation_id, and add-to-cart (parent ID)
                 formData.append('product_id', productId);
                 formData.append('variation_id', variationId);
-                formData.append('add-to-cart', variationId);  // Use variation ID, not parent ID
+                formData.append('add-to-cart', productId);  // Parent product ID
             } else {
-                // Simple product - only send add-to-cart (not product_id to avoid doubling)
+                // Simple product: send both product_id and add-to-cart
+                formData.append('product_id', productId);
                 formData.append('add-to-cart', productId);
             }
 
@@ -961,14 +962,19 @@
 
             const data = await response.json();
 
-            if (data.error && data.product_url) {
-                // WooCommerce returned error (product might be out of stock, etc.)
+            // Log response for debugging
+            console.log('Add to cart response:', data);
+
+            // Check if WooCommerce returned an error
+            if (data.error) {
+                console.error('WooCommerce error:', data.error);
                 buttonElement.innerHTML = 'שגיאה ❌';
                 setTimeout(() => {
                     buttonElement.innerHTML = originalText;
                     buttonElement.disabled = false;
                 }, 2000);
             } else {
+                // Success!
                 buttonElement.innerHTML = 'נוסף! ✓';
                 setTimeout(() => {
                     buttonElement.innerHTML = originalText;
