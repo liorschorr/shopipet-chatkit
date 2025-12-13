@@ -112,6 +112,15 @@ class handler(BaseHTTPRequestHandler):
                                             if p.get('images') and len(p['images']) > 0:
                                                 img_src = p['images'][0]['src']
                                             
+                                            # Clean HTML from short_description
+                                            import re
+                                            short_desc = p.get('short_description', '')
+                                            if short_desc:
+                                                # Remove HTML tags
+                                                short_desc = re.sub(r'<[^>]+>', '', short_desc)
+                                                # Remove extra whitespace
+                                                short_desc = ' '.join(short_desc.split())
+
                                             products_data.append({
                                                 "id": p.get('id'),
                                                 "name": p.get('name'),
@@ -120,6 +129,7 @@ class handler(BaseHTTPRequestHandler):
                                                 "sale_price": f"{p.get('sale_price')} ₪",
                                                 "on_sale": p.get('on_sale', False),
                                                 "image": img_src,
+                                                "short_description": short_desc,
                                                 "permalink": p.get('permalink'),
                                                 "add_to_cart_url": f"{os.environ.get('WOO_BASE_URL')}/?add-to-cart={p.get('id')}"
                                             })

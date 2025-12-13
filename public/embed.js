@@ -521,7 +521,7 @@
                     </div>
                     <div class="product-action-row">
                         ${priceHtml}
-                        <a href="${p.add_to_cart_url}" target="_blank" rel="noopener noreferrer" class="add-cart-btn">
+                        <a href="${p.add_to_cart_url}" rel="noopener noreferrer" class="add-cart-btn">
                             הוסף לסל 🛒
                         </a>
                     </div>
