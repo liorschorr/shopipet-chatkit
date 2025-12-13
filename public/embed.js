@@ -236,6 +236,51 @@
             transform: translateY(0);
         }
 
+        /* בורר כמות */
+        .quantity-selector {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+        .quantity-btn {
+            background: ${COLORS.primary};
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+            padding: 0;
+            line-height: 1;
+        }
+        .quantity-btn:hover {
+            background: #c2185b;
+        }
+        .quantity-btn:active {
+            transform: scale(0.95);
+        }
+        .quantity-input {
+            width: 35px;
+            height: 24px;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 0;
+        }
+        .quantity-input:focus {
+            outline: none;
+            border-color: ${COLORS.primary};
+        }
+
         /* בוחר וריאציות */
         .variation-selector {
             margin: 8px 0;
@@ -364,22 +409,22 @@
             #shopipet-widget {
                 position: fixed;
                 top: 0;
-                left: 0;
-                right: 0;
+                left: 50%;
+                transform: translateX(-50%);
                 bottom: 0;
 
                 /* גובה: מתחיל ב-100vh ו-JS ידאג לעדכון דינמי */
                 height: 100vh;
                 height: 100dvh; /* Dynamic Viewport Height - תמיכה מודרנית */
 
-                width: 100% !important;
+                width: 90% !important;
+                max-width: 500px;
                 max-height: none;
                 border-radius: 0; /* מסך מלא במובייל */
                 /* display מוגדר ב-JS בלבד - לא כאן! */
                 flex-direction: column;
 
                 /* מבטיח שהווידג'ט יתמקם נכון בתוך ה-Visual Viewport */
-                transform: translate3d(0, 0, 0);
                 will-change: height;
             }
 
@@ -552,8 +597,8 @@
             btn.addEventListener('click', () => {
                 const action = btn.getAttribute('data-action');
                 btn.parentElement.remove();
-                input.value = action;
-                sendMessage();
+                addMessage(action, 'user');
+                handleQuickAction(action);
             });
         });
 
@@ -569,7 +614,7 @@
             });
         });
 
-        // שחזור בוחר וריאציות
+        // שחזור בוחר וריאציות וכפתורי כמות
         const productCards = messages.querySelectorAll('.product-card');
         productCards.forEach(card => {
             const variationOptions = card.querySelectorAll('.variation-option');
@@ -583,6 +628,35 @@
                         const variationId = option.getAttribute('data-variation-id');
                         addToCartBtn.setAttribute('data-variation-id', variationId);
                     });
+                });
+            }
+
+            // שחזור כפתורי כמות
+            const quantityInput = card.querySelector('.quantity-input');
+            const plusBtn = card.querySelector('.quantity-plus');
+            const minusBtn = card.querySelector('.quantity-minus');
+
+            if (quantityInput && plusBtn && minusBtn) {
+                plusBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const currentVal = parseInt(quantityInput.value);
+                    if (currentVal < 99) {
+                        quantityInput.value = currentVal + 1;
+                    }
+                });
+
+                minusBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const currentVal = parseInt(quantityInput.value);
+                    if (currentVal > 1) {
+                        quantityInput.value = currentVal - 1;
+                    }
+                });
+
+                quantityInput.addEventListener('input', () => {
+                    let val = parseInt(quantityInput.value);
+                    if (isNaN(val) || val < 1) quantityInput.value = 1;
+                    if (val > 99) quantityInput.value = 99;
                 });
             }
         });
@@ -603,6 +677,32 @@
             return localStorage.getItem(WIDGET_STATE_KEY) === 'open';
         } catch (e) {
             return false;
+        }
+    }
+
+    // טיפול בפעולות מהירות עם תשובות ברירת מחדל
+    function handleQuickAction(action) {
+        let response = '';
+
+        if (action === 'מוצרים') {
+            response = `נהדר! אשמח לעזור למצוא בדיוק את מה שמחפשים 🐾
+
+אפשר:
+• לספר לי על חיית המחמד (כלב, חתול, ציפור ועוד)
+• לחפש לפי מקט או ברקוד
+• לבקש המלצה לפי גיל, גזע או צורך מיוחד
+• לשאול על קטגוריה מסוימת כמו מזון, צעצועים או אביזרים
+
+איך נתחיל? 😊`;
+        } else if (action === 'בירור הזמנות') {
+            response = 'בהחלט! אשמח לעזור בכל שאלה או בקשה שיש לך. אם ברצונך לבדוק את סטטוס ההזמנה שלך, אנא ספק את מספר הטלפון (מתחיל ב-05), ואני אטפל בזה עבורך. 📦';
+        }
+
+        if (response) {
+            // הצגת התשובה עם אנימציית הקלדה
+            setTimeout(() => {
+                addMessage(response, 'bot');
+            }, 500);
         }
     }
 
@@ -630,9 +730,10 @@
                 const action = btn.getAttribute('data-action');
                 // מחיקת הכפתורים
                 buttonsDiv.remove();
-                // שליחת ההודעה כאילו המשתמש כתב אותה
-                input.value = action;
-                sendMessage();
+                // הצגת הודעת משתמש
+                addMessage(action, 'user');
+                // הצגת תשובה ברירת מחדל בהתאם לבחירה
+                handleQuickAction(action);
             });
         });
 
@@ -731,11 +832,13 @@
             widget.style.height = vvHeight + 'px';
 
             // iOS: תיקון למיקום כשיש offset (גלילה של הדף)
+            // שמירה על ה-transform של ה-centering
             if (vvOffsetTop > 0) {
                 widget.style.top = vvOffsetTop + 'px';
             } else {
                 widget.style.top = '0px';
             }
+            widget.style.transform = 'translateX(-50%)';
 
             // גלילה חכמה: רק אם המקלדת נפתחה ויש פוקוס ב-input
             if (isKeyboardOpen && document.activeElement === input) {
@@ -834,7 +937,7 @@
                 // "More options" button if there are more than 3 variations
                 if (p.has_more_variations) {
                     variationsHtml += `
-                        <a href="${p.permalink}" target="_blank" rel="noopener noreferrer" class="more-variations-btn">
+                        <a href="${p.permalink}" class="more-variations-btn">
                             עוד אפשרויות ›
                         </a>
                     `;
@@ -865,13 +968,13 @@
             // בניית הכרטיסייה המלאה
             card.innerHTML = `
                 <div class="product-image-wrapper">
-                    <a href="${p.permalink}" target="_blank" rel="noopener noreferrer">
+                    <a href="${p.permalink}">
                         <img src="${p.image}" alt="${p.name}" class="product-image">
                     </a>
                 </div>
                 <div class="product-content">
                     <div>
-                        <a href="${p.permalink}" target="_blank" rel="noopener noreferrer" class="product-title">
+                        <a href="${p.permalink}" class="product-title">
                             ${p.name}
                         </a>
                         ${skuHtml}
@@ -880,6 +983,11 @@
                     </div>
                     <div class="product-action-row">
                         ${priceHtml}
+                        <div class="quantity-selector">
+                            <button class="quantity-btn quantity-plus">+</button>
+                            <input type="number" class="quantity-input" value="1" min="1" max="99" />
+                            <button class="quantity-btn quantity-minus">-</button>
+                        </div>
                         <button class="add-cart-btn"
                                 data-product-id="${p.id}"
                                 data-product-type="${p.type}"
@@ -919,6 +1027,34 @@
                 addToCart(productId, addToCartBtn, productType, variationId);
             });
 
+            // Add event listeners for quantity buttons
+            const quantityInput = card.querySelector('.quantity-input');
+            const plusBtn = card.querySelector('.quantity-plus');
+            const minusBtn = card.querySelector('.quantity-minus');
+
+            plusBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const currentVal = parseInt(quantityInput.value);
+                if (currentVal < 99) {
+                    quantityInput.value = currentVal + 1;
+                }
+            });
+
+            minusBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const currentVal = parseInt(quantityInput.value);
+                if (currentVal > 1) {
+                    quantityInput.value = currentVal - 1;
+                }
+            });
+
+            // Prevent invalid input
+            quantityInput.addEventListener('input', () => {
+                let val = parseInt(quantityInput.value);
+                if (isNaN(val) || val < 1) quantityInput.value = 1;
+                if (val > 99) quantityInput.value = 99;
+            });
+
             messages.appendChild(card);
         });
         scrollToBottom();
@@ -935,18 +1071,21 @@
         buttonElement.disabled = true;
 
         try {
+            // Get quantity from quantity input (if exists), default to 1
+            const card = buttonElement.closest('.product-card');
+            const quantityInput = card ? card.querySelector('.quantity-input') : null;
+            const quantity = quantityInput ? parseInt(quantityInput.value) : 1;
+
             // WooCommerce AJAX Add to Cart
             const formData = new FormData();
-            formData.append('quantity', 1);
+            formData.append('quantity', quantity);
 
             if (productType === 'variable' && variationId) {
-                // Variable product: send parent product_id, variation_id, and add-to-cart (parent ID)
-                formData.append('product_id', productId);
+                // Variable product: only send variation_id and add-to-cart
                 formData.append('variation_id', variationId);
                 formData.append('add-to-cart', productId);  // Parent product ID
             } else {
-                // Simple product: send both product_id and add-to-cart
-                formData.append('product_id', productId);
+                // Simple product: only send add-to-cart
                 formData.append('add-to-cart', productId);
             }
 
@@ -965,8 +1104,9 @@
             // Log response for debugging
             console.log('Add to cart response:', data);
 
-            // Check if WooCommerce returned an error
-            if (data.error) {
+            // Check if WooCommerce returned an error (WooCommerce uses 'error' property for errors)
+            // Success is indicated by presence of 'fragments' or no 'error' property
+            if (data.error && data.error !== false) {
                 console.error('WooCommerce error:', data.error);
                 buttonElement.innerHTML = 'שגיאה ❌';
                 setTimeout(() => {
@@ -974,7 +1114,7 @@
                     buttonElement.disabled = false;
                 }, 2000);
             } else {
-                // Success!
+                // Success! (either has fragments or no error)
                 buttonElement.innerHTML = 'נוסף! ✓';
                 setTimeout(() => {
                     buttonElement.innerHTML = originalText;
