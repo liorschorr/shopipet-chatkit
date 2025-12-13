@@ -124,6 +124,41 @@ class handler(BaseHTTPRequestHandler):
                                             # Get SKU
                                             sku = p.get('sku', '')
 
+                                            # Check product type
+                                            product_type = p.get('type', 'simple')
+                                            variations = []
+
+                                            # If variable product, fetch variations
+                                            if product_type == 'variable':
+                                                try:
+                                                    var_res = wcapi.get(f"products/{p.get('id')}/variations", params={"per_page": 100})
+                                                    if var_res.status_code == 200:
+                                                        all_variations = var_res.json()
+                                                        # Filter only in-stock variations
+                                                        in_stock_variations = [
+                                                            v for v in all_variations
+                                                            if v.get('stock_status') == 'instock' and v.get('purchasable', True)
+                                                        ]
+
+                                                        # Limit to first 3 variations
+                                                        for v in in_stock_variations[:3]:
+                                                            var_name = v.get('name', '')
+                                                            # Extract variation attributes (e.g., "Size: Large, Color: Red")
+                                                            attributes = v.get('attributes', [])
+                                                            attr_text = ', '.join([f"{a.get('name')}: {a.get('option')}" for a in attributes if a.get('option')])
+
+                                                            variations.append({
+                                                                "id": v.get('id'),
+                                                                "name": attr_text or var_name,
+                                                                "price": f"{v.get('price')} ₪",
+                                                                "regular_price": f"{v.get('regular_price')} ₪",
+                                                                "sale_price": f"{v.get('sale_price')} ₪" if v.get('sale_price') else "",
+                                                                "on_sale": v.get('on_sale', False),
+                                                                "sku": v.get('sku', '')
+                                                            })
+                                                except Exception as var_e:
+                                                    print(f"Variation fetch error: {var_e}")
+
                                             products_data.append({
                                                 "id": p.get('id'),
                                                 "name": p.get('name'),
@@ -135,7 +170,10 @@ class handler(BaseHTTPRequestHandler):
                                                 "image": img_src,
                                                 "short_description": short_desc,
                                                 "permalink": p.get('permalink'),
-                                                "add_to_cart_url": f"{os.environ.get('WOO_BASE_URL')}/?add-to-cart={p.get('id')}"
+                                                "add_to_cart_url": f"{os.environ.get('WOO_BASE_URL')}/?add-to-cart={p.get('id')}",
+                                                "type": product_type,
+                                                "variations": variations,
+                                                "has_more_variations": product_type == 'variable' and len(in_stock_variations) > 3 if product_type == 'variable' else False
                                             })
                                 except Exception as woo_e:
                                     print(f"Woo Error: {woo_e}")

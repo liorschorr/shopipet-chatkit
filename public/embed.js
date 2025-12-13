@@ -234,6 +234,65 @@
             transform: translateY(0);
         }
 
+        /* בוחר וריאציות */
+        .variation-selector {
+            margin: 8px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .variation-option {
+            background: white;
+            border: 1.5px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            text-align: right;
+        }
+        .variation-option:hover {
+            border-color: ${COLORS.primary};
+            background: #fff5fb;
+        }
+        .variation-option.selected {
+            border-color: ${COLORS.primary};
+            background: ${COLORS.primary};
+            color: white;
+            font-weight: 600;
+        }
+        .variation-name {
+            flex: 1;
+            font-size: 12px;
+        }
+        .variation-price {
+            font-weight: 600;
+            font-size: 13px;
+            color: ${COLORS.primary};
+        }
+        .variation-option.selected .variation-price {
+            color: white;
+        }
+        .more-variations-btn {
+            background: #f5f5f5;
+            border: 1.5px dashed #ccc;
+            color: #666;
+            text-decoration: none;
+            display: block;
+            text-align: center;
+            font-size: 12px;
+            padding: 8px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        .more-variations-btn:hover {
+            background: #ececec;
+            border-color: #999;
+        }
+
         /* חיווי הקלדה */
         .typing {
             font-size: 12px; color: #666; font-style: italic;
@@ -382,6 +441,22 @@
             /* שדה קלט */
             #shopipet-input {
                 font-size: 18px; /* +2pt (גם מונע זום באייפון) */
+            }
+
+            /* וריאציות במובייל */
+            .variation-option {
+                font-size: 14px; /* +2pt */
+                padding: 10px 12px; /* גדול יותר למגע */
+            }
+            .variation-name {
+                font-size: 14px; /* +2pt */
+            }
+            .variation-price {
+                font-size: 15px; /* +2pt */
+            }
+            .more-variations-btn {
+                font-size: 14px; /* +2pt */
+                padding: 10px;
             }
 
             /* אזור קלט צמוד למטה */
@@ -607,22 +682,8 @@
             const card = document.createElement('div');
             card.className = 'product-card';
 
-            // בניית HTML של המחיר
-            let priceHtml;
-            if (p.on_sale) {
-                priceHtml = `
-                    <div class="product-price-container">
-                        <span class="product-price">${p.sale_price}</span>
-                        <span class="product-old-price">${p.regular_price}</span>
-                    </div>
-                `;
-            } else {
-                priceHtml = `
-                    <div class="product-price-container">
-                        <span class="product-price">${p.price}</span>
-                    </div>
-                `;
-            }
+            // Check if variable product
+            const isVariable = p.type === 'variable' && p.variations && p.variations.length > 0;
 
             // בניית SKU (אם קיים)
             const skuHtml = p.sku
@@ -633,6 +694,54 @@
             const descriptionHtml = p.short_description
                 ? `<div class="product-description">${p.short_description}</div>`
                 : '';
+
+            // Build variations selector for variable products
+            let variationsHtml = '';
+            if (isVariable) {
+                variationsHtml = '<div class="variation-selector">';
+
+                p.variations.forEach((variation, index) => {
+                    const isSelected = index === 0; // Select first by default
+                    variationsHtml += `
+                        <div class="variation-option ${isSelected ? 'selected' : ''}"
+                             data-variation-id="${variation.id}"
+                             data-variation-price="${variation.price}">
+                            <span class="variation-name">${variation.name}</span>
+                            <span class="variation-price">${variation.price}</span>
+                        </div>
+                    `;
+                });
+
+                // "More options" button if there are more than 3 variations
+                if (p.has_more_variations) {
+                    variationsHtml += `
+                        <a href="${p.permalink}" target="_blank" rel="noopener noreferrer" class="more-variations-btn">
+                            עוד אפשרויות ›
+                        </a>
+                    `;
+                }
+
+                variationsHtml += '</div>';
+            }
+
+            // בניית HTML של המחיר (for simple products or parent price for variable)
+            let priceHtml = '';
+            if (!isVariable) {
+                if (p.on_sale) {
+                    priceHtml = `
+                        <div class="product-price-container">
+                            <span class="product-price">${p.sale_price}</span>
+                            <span class="product-old-price">${p.regular_price}</span>
+                        </div>
+                    `;
+                } else {
+                    priceHtml = `
+                        <div class="product-price-container">
+                            <span class="product-price">${p.price}</span>
+                        </div>
+                    `;
+                }
+            }
 
             // בניית הכרטיסייה המלאה
             card.innerHTML = `
@@ -648,21 +757,47 @@
                         </a>
                         ${skuHtml}
                         ${descriptionHtml}
+                        ${variationsHtml}
                     </div>
                     <div class="product-action-row">
                         ${priceHtml}
-                        <button class="add-cart-btn" data-product-id="${p.id}">
+                        <button class="add-cart-btn"
+                                data-product-id="${p.id}"
+                                data-product-type="${p.type}"
+                                ${isVariable ? `data-variation-id="${p.variations[0].id}"` : ''}>
                             הוסף לסל 🛒
                         </button>
                     </div>
                 </div>
             `;
 
+            // Add event listeners for variation selection
+            if (isVariable) {
+                const variationOptions = card.querySelectorAll('.variation-option');
+                const addToCartBtn = card.querySelector('.add-cart-btn');
+
+                variationOptions.forEach(option => {
+                    option.addEventListener('click', () => {
+                        // Remove selected class from all options
+                        variationOptions.forEach(opt => opt.classList.remove('selected'));
+                        // Add selected class to clicked option
+                        option.classList.add('selected');
+                        // Update button with selected variation ID
+                        const variationId = option.getAttribute('data-variation-id');
+                        addToCartBtn.setAttribute('data-variation-id', variationId);
+                    });
+                });
+            }
+
             // Add event listener for add-to-cart button
             const addToCartBtn = card.querySelector('.add-cart-btn');
             addToCartBtn.addEventListener('click', (e) => {
                 e.preventDefault();
-                addToCart(p.id, addToCartBtn);
+                const productId = addToCartBtn.getAttribute('data-product-id');
+                const productType = addToCartBtn.getAttribute('data-product-type');
+                const variationId = addToCartBtn.getAttribute('data-variation-id');
+
+                addToCart(productId, addToCartBtn, productType, variationId);
             });
 
             messages.appendChild(card);
@@ -671,7 +806,7 @@
     }
 
     // פונקציה להוספה לסל (AJAX)
-    async function addToCart(productId, buttonElement) {
+    async function addToCart(productId, buttonElement, productType = 'simple', variationId = null) {
         const originalText = buttonElement.innerHTML;
         buttonElement.innerHTML = 'מוסיף...';
         buttonElement.disabled = true;
@@ -679,9 +814,19 @@
         try {
             // WooCommerce AJAX Add to Cart
             const formData = new FormData();
-            formData.append('product_id', productId);
-            formData.append('quantity', '1');
-            formData.append('add-to-cart', productId);
+
+            if (productType === 'variable' && variationId) {
+                // Variable product - add variation
+                formData.append('product_id', productId);
+                formData.append('variation_id', variationId);
+                formData.append('quantity', '1');
+                formData.append('add-to-cart', productId);
+            } else {
+                // Simple product
+                formData.append('product_id', productId);
+                formData.append('quantity', '1');
+                formData.append('add-to-cart', productId);
+            }
 
             const response = await fetch('/?wc-ajax=add_to_cart', {
                 method: 'POST',
