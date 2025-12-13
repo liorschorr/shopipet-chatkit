@@ -1,7 +1,9 @@
 (function() {
-    const API_BASE = "https://shopipet-chatkit.vercel.app/api"; 
+    const API_BASE = "https://shopipet-chatkit.vercel.app/api";
     const STORAGE_KEY = 'shopipet_thread_id';
-    
+    const CONVERSATION_KEY = 'shopipet_conversation';
+    const WIDGET_STATE_KEY = 'shopipet_widget_state';
+
     // --- הגדרות צבעים (לפי המיתוג) ---
     const COLORS = {
         primary: '#E91E8C',      // מג'נטה
@@ -501,6 +503,109 @@
     setTimeout(() => bubble.classList.remove('show'), 11000);
     bubble.onclick = () => { bubble.remove(); trigger.click(); };
 
+    // שמירת שיחה ל-localStorage
+    function saveConversation() {
+        try {
+            const conversationData = {
+                html: messages.innerHTML,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(CONVERSATION_KEY, JSON.stringify(conversationData));
+        } catch (e) {
+            console.error('Failed to save conversation:', e);
+        }
+    }
+
+    // טעינת שיחה מ-localStorage
+    function loadConversation() {
+        try {
+            const saved = localStorage.getItem(CONVERSATION_KEY);
+            if (!saved) return false;
+
+            const conversationData = JSON.parse(saved);
+            const dayInMs = 24 * 60 * 60 * 1000;
+
+            // מחיקת שיחה אם עברו יותר מ-7 ימים
+            if (Date.now() - conversationData.timestamp > 7 * dayInMs) {
+                localStorage.removeItem(CONVERSATION_KEY);
+                return false;
+            }
+
+            // שחזור ה-HTML של השיחה
+            messages.innerHTML = conversationData.html;
+
+            // שחזור event listeners לכפתורים (אם יש)
+            restoreEventListeners();
+
+            return true;
+        } catch (e) {
+            console.error('Failed to load conversation:', e);
+            return false;
+        }
+    }
+
+    // שחזור event listeners אחרי טעינת שיחה
+    function restoreEventListeners() {
+        // שחזור כפתורי פעולה מהירה
+        const quickButtons = messages.querySelectorAll('.quick-action-btn');
+        quickButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-action');
+                btn.parentElement.remove();
+                input.value = action;
+                sendMessage();
+            });
+        });
+
+        // שחזור כפתורי "הוסף לסל" בכרטיסיות מוצרים
+        const addToCartButtons = messages.querySelectorAll('.add-cart-btn');
+        addToCartButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const productId = btn.getAttribute('data-product-id');
+                const productType = btn.getAttribute('data-product-type');
+                const variationId = btn.getAttribute('data-variation-id');
+                addToCart(productId, btn, productType, variationId);
+            });
+        });
+
+        // שחזור בוחר וריאציות
+        const productCards = messages.querySelectorAll('.product-card');
+        productCards.forEach(card => {
+            const variationOptions = card.querySelectorAll('.variation-option');
+            const addToCartBtn = card.querySelector('.add-cart-btn');
+
+            if (variationOptions.length > 0 && addToCartBtn) {
+                variationOptions.forEach(option => {
+                    option.addEventListener('click', () => {
+                        variationOptions.forEach(opt => opt.classList.remove('selected'));
+                        option.classList.add('selected');
+                        const variationId = option.getAttribute('data-variation-id');
+                        addToCartBtn.setAttribute('data-variation-id', variationId);
+                    });
+                });
+            }
+        });
+    }
+
+    // שמירת מצב הווידג'ט (פתוח/סגור)
+    function saveWidgetState(isOpen) {
+        try {
+            localStorage.setItem(WIDGET_STATE_KEY, isOpen ? 'open' : 'closed');
+        } catch (e) {
+            console.error('Failed to save widget state:', e);
+        }
+    }
+
+    // טעינת מצב הווידג'ט
+    function loadWidgetState() {
+        try {
+            return localStorage.getItem(WIDGET_STATE_KEY) === 'open';
+        } catch (e) {
+            return false;
+        }
+    }
+
     // הצגת הודעת ברוכים הבאים עם כפתורי פעולה
     function showWelcomeMessage() {
         // בדיקה אם כבר הוצגה הודעת הברוכים הבאים
@@ -532,6 +637,7 @@
         });
 
         scrollToBottom();
+        saveConversation(); // שמירת הודעת הברוכים הבאים
     }
 
     // פתיחה/סגירה
@@ -540,8 +646,14 @@
         trigger.style.display = 'none';
         bubble.remove();
 
-        // הצגת הודעת ברוכים הבאים
-        showWelcomeMessage();
+        // טעינת שיחה קיימת או הצגת הודעת ברוכים הבאים
+        const conversationLoaded = loadConversation();
+        if (!conversationLoaded) {
+            showWelcomeMessage();
+        }
+
+        // שמירת מצב פתוח
+        saveWidgetState(true);
 
         setTimeout(scrollToBottom, 100);
 
@@ -554,6 +666,9 @@
         widget.style.display = 'none';
         trigger.style.display = 'flex';
         resetWidgetPosition();
+
+        // שמירת מצב סגור
+        saveWidgetState(false);
     };
 
     // גלילה חכמה
@@ -657,7 +772,7 @@
     function addMessage(text, type) {
         const div = document.createElement('div');
         div.className = `msg ${type}`;
-        
+
         if (type === 'bot') {
             messages.appendChild(div);
             let i = 0; div.innerHTML = '';
@@ -666,12 +781,16 @@
                     div.innerHTML += text.charAt(i); i++;
                     setTimeout(typeChar, 10);
                     messages.scrollTop = messages.scrollHeight;
+                } else {
+                    // שמירה אחרי שההודעה הושלמה
+                    saveConversation();
                 }
             }
             typeChar();
         } else {
             div.innerText = text;
             messages.appendChild(div);
+            saveConversation(); // שמירה מיידית
         }
         scrollToBottom();
     }
@@ -803,10 +922,14 @@
             messages.appendChild(card);
         });
         scrollToBottom();
+        saveConversation(); // שמירת מוצרים
     }
 
     // פונקציה להוספה לסל (AJAX)
     async function addToCart(productId, buttonElement, productType = 'simple', variationId = null) {
+        // Prevent double-click
+        if (buttonElement.disabled) return;
+
         const originalText = buttonElement.innerHTML;
         buttonElement.innerHTML = 'מוסיף...';
         buttonElement.disabled = true;
@@ -817,16 +940,16 @@
 
             if (productType === 'variable' && variationId) {
                 // Variable product - add variation
-                formData.append('product_id', productId);
                 formData.append('variation_id', variationId);
-                formData.append('quantity', '1');
-                formData.append('add-to-cart', productId);
+                formData.append('quantity', 1);
             } else {
                 // Simple product
-                formData.append('product_id', productId);
-                formData.append('quantity', '1');
-                formData.append('add-to-cart', productId);
+                formData.append('quantity', 1);
             }
+
+            // Always append product_id and add-to-cart
+            formData.append('product_id', productId);
+            formData.append('add-to-cart', productId);
 
             const response = await fetch('/?wc-ajax=add_to_cart', {
                 method: 'POST',
@@ -911,5 +1034,30 @@
     }
 
     send.onclick = sendMessage;
-    input.onkeypress = (e) => { if (e.key === 'Enter') sendMessage(); };
+    input.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+    // --- אתחול: שחזור מצב הווידג'ט בטעינת דף ---
+    (function initWidget() {
+        // בדיקה אם הווידג'ט היה פתוח בדף הקודם
+        const wasOpen = loadWidgetState();
+
+        if (wasOpen) {
+            // פתיחה אוטומטית של הווידג'ט
+            widget.style.display = 'flex';
+            trigger.style.display = 'none';
+
+            // טעינת שיחה קיימת
+            const conversationLoaded = loadConversation();
+            if (!conversationLoaded) {
+                showWelcomeMessage();
+            }
+
+            setTimeout(scrollToBottom, 100);
+
+            // טריגר ראשוני לחישוב גובה (למקרה שהדפדפן צריך ניעור)
+            if (window.innerWidth < 480 && window.visualViewport) {
+                updateWidgetHeight();
+            }
+        }
+    })();
 })();
