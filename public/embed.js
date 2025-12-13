@@ -124,6 +124,8 @@
             display: flex; gap: 10px; align-items: center;
             flex-shrink: 0; /* מונע כיווץ */
             min-height: 60px;
+            /* שיפור לאייפון למטה */
+            padding-bottom: env(safe-area-inset-bottom, 10px);
         }
         #shopipet-input {
             flex: 1; padding: 12px 15px;
@@ -142,18 +144,26 @@
         }
         #shopipet-send:hover { background-color: #c2185b; }
 
-        /* --- מובייל: תיקון קריטי לגובה --- */
+        /* --- מובייל: התיקון הגדול --- */
         @media (max-width: 480px) {
             #shopipet-widget {
                 position: fixed;
-                top: 20px;      /* עוגן עליון */
-                bottom: 20px;   /* עוגן תחתון - מבטיח שהחלון יתכווץ כשהמקלדת עולה */
+                top: 20px; /* רווח קטן מלמעלה */
+                
+                /* הקסם: גובה דינמי שתופס את כל המסך פחות השוליים, ומתחשב במקלדת */
+                height: calc(100dvh - 40px) !important;
+                /* תמיכה לאחור בדפדפנים ישנים */
+                height: calc(100vh - 40px);
+                
+                width: 90% !important;
                 left: 5%;
                 right: 5%;
-                width: 90% !important;
-                height: auto !important; /* הגובה נקבע לפי ה-top/bottom */
+                bottom: auto; /* מבטל את העוגן התחתון כדי לאפשר גובה דינמי */
+                
                 max-height: none;
                 border-radius: 15px;
+                display: flex;
+                flex-direction: column;
             }
             #shopipet-trigger { width: 60px; height: 60px; bottom: 15px; right: 15px; }
         }
@@ -194,8 +204,12 @@
         widget.style.display = 'flex'; 
         trigger.style.display = 'none'; 
         bubble.remove(); 
-        // גלילה לתחתית בפתיחה
         setTimeout(scrollToBottom, 100);
+        
+        // טריגר ראשוני לחישוב גובה (למקרה שהדפדפן צריך ניעור)
+        if (window.innerWidth < 480 && window.visualViewport) {
+            handleVisualResize();
+        }
     };
     close.onclick = () => { widget.style.display = 'none'; trigger.style.display = 'flex'; };
 
@@ -204,10 +218,34 @@
         messages.scrollTop = messages.scrollHeight; 
     }
 
-    // הקפצה למטה כשהמקלדת נפתחת (פוקוס)
+    // הקפצה למטה כשהמקלדת נפתחת
     input.addEventListener('focus', () => {
-        setTimeout(scrollToBottom, 300); // המתנה קצרה שהמקלדת תעלה
+        setTimeout(scrollToBottom, 300);
+        // וידוא שהחלון כולו נגלל לאזור הנכון
+        setTimeout(() => input.scrollIntoView({behavior: "smooth", block: "center"}), 400);
     });
+
+    // --- לוגיקה לתיקון גודל מסך במובייל (Visual Viewport API) ---
+    // זה מבטיח שהווידג'ט מתכווץ פיזית כשהמקלדת עולה
+    function handleVisualResize() {
+        if (!widget || widget.style.display === 'none') return;
+        
+        // מפעיל רק במובייל
+        if (window.innerWidth < 480 && window.visualViewport) {
+            // משנה את גובה הוידג'ט לגובה הויזואלי הזמין פחות שוליים
+            // המספר 40 מייצג את ה-margin (20 למעלה + 20 למטה)
+            widget.style.height = (window.visualViewport.height - 40) + 'px';
+            
+            // מוודא שאנחנו רואים את הלמטה
+            scrollToBottom();
+        }
+    }
+
+    // האזנה לאירועי מקלדת ושינוי גודל
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', handleVisualResize);
+        window.visualViewport.addEventListener('scroll', handleVisualResize);
+    }
 
     // הוספת הודעה
     function addMessage(text, type) {
