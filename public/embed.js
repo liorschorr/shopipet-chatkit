@@ -327,6 +327,7 @@
                 position: sticky;
                 top: 0;
                 z-index: 10;
+                font-size: 20px; /* +2pt */
             }
 
             /* אזור הודעות גמיש */
@@ -335,6 +336,52 @@
                 min-height: 0; /* חשוב! מאפשר overflow בתוך flex container */
                 overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
+            }
+
+            /* הודעות - גופן גדול יותר */
+            .msg {
+                font-size: 17px; /* +2pt */
+            }
+
+            /* כותרת מוצר */
+            .product-title {
+                font-size: 16px; /* +2pt */
+            }
+
+            /* SKU */
+            .product-sku {
+                font-size: 13px; /* +2pt */
+            }
+
+            /* תיאור מוצר */
+            .product-description {
+                font-size: 14px; /* +2pt */
+            }
+
+            /* מחיר */
+            .product-price {
+                font-size: 17px; /* +2pt */
+            }
+
+            .product-old-price {
+                font-size: 14px; /* +2pt */
+            }
+
+            /* כפתור הוספה לסל */
+            .add-cart-btn {
+                font-size: 14px; /* +2pt */
+                padding: 8px 18px; /* גדול יותר לנוחות */
+            }
+
+            /* כפתורי פעולה מהירה */
+            .quick-action-btn {
+                font-size: 16px; /* +2pt */
+                padding: 12px 22px; /* גדול יותר */
+            }
+
+            /* שדה קלט */
+            #shopipet-input {
+                font-size: 18px; /* +2pt (גם מונע זום באייפון) */
             }
 
             /* אזור קלט צמוד למטה */
@@ -633,16 +680,23 @@
             // WooCommerce AJAX Add to Cart
             const formData = new FormData();
             formData.append('product_id', productId);
-            formData.append('quantity', 1);
+            formData.append('quantity', '1');
+            formData.append('add-to-cart', productId);
 
             const response = await fetch('/?wc-ajax=add_to_cart', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                credentials: 'same-origin'
             });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
 
             const data = await response.json();
 
-            if (data.error) {
+            if (data.error && data.product_url) {
+                // WooCommerce returned error (product might be out of stock, etc.)
                 buttonElement.innerHTML = 'שגיאה ❌';
                 setTimeout(() => {
                     buttonElement.innerHTML = originalText;
@@ -655,8 +709,14 @@
                     buttonElement.disabled = false;
                 }, 2000);
 
-                // Trigger WooCommerce cart update event (if needed)
-                document.body.dispatchEvent(new Event('wc_fragment_refresh'));
+                // Trigger WooCommerce cart fragments refresh
+                if (typeof jQuery !== 'undefined') {
+                    jQuery(document.body).trigger('wc_fragment_refresh');
+                    jQuery(document.body).trigger('added_to_cart', [data.fragments, data.cart_hash]);
+                } else {
+                    // Fallback without jQuery
+                    document.body.dispatchEvent(new CustomEvent('wc_fragment_refresh'));
+                }
             }
         } catch (error) {
             console.error('Add to cart error:', error);
