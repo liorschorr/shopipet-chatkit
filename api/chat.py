@@ -59,8 +59,8 @@ class handler(BaseHTTPRequestHandler):
             # --- שלב ד: המתנה (Polling) ---
             start_time = time.time()
             while True:
-                # הגנה מזמן ריצה ארוך (55 שניות)
-                if time.time() - start_time > 55:
+                # הגנה מזמן ריצה ארוך (120 שניות)
+                if time.time() - start_time > 120:
                     self.wfile.write(json.dumps({
                         "reply": "הפעולה לקחה יותר מדי זמן (Timeout). נסה שוב.",
                         "thread_id": thread_id

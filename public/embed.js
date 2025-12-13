@@ -117,10 +117,15 @@
         .date-divider {
             text-align: center;
             margin: 16px 0 12px 0;
-            position: relative;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            padding: 8px 0;
+            background: linear-gradient(to bottom, #f0f0f0 0%, #f0f0f0 50%, transparent 100%);
         }
         .date-divider-text {
             background: rgba(225, 245, 254, 0.92);
+            backdrop-filter: blur(10px);
             color: #667781;
             font-size: 12px;
             font-weight: 500;
@@ -155,6 +160,9 @@
             flex-shrink: 0;
             width: 80px;
             height: 80px;
+            overflow: hidden;
+            border-radius: 8px;
+            position: relative;
         }
         .product-image {
             width: 100%;
@@ -307,6 +315,8 @@
             font-size: 13px;
             font-weight: 600;
             padding: 0;
+            line-height: 22px;
+            vertical-align: middle;
         }
         .quantity-input:focus {
             outline: none;
@@ -1036,15 +1046,25 @@
 
         const timeStr = formatTime(jerusalemTime);
 
+        // Convert newlines to <br> tags for HTML rendering
+        const formattedText = text.replace(/\n/g, '<br>');
+
         if (type === 'bot') {
             messages.appendChild(div);
-            let i = 0;
-            let content = '';
+            let charIndex = 0;
+            let renderedContent = '';
+
             function typeChar() {
-                if (i < text.length) {
-                    content += text.charAt(i);
-                    div.innerHTML = content + `<div class="msg-timestamp">${timeStr}</div>`;
-                    i++;
+                if (charIndex < formattedText.length) {
+                    // Handle <br> tags as a unit
+                    if (formattedText.substr(charIndex, 4) === '<br>') {
+                        renderedContent += '<br>';
+                        charIndex += 4;
+                    } else {
+                        renderedContent += formattedText.charAt(charIndex);
+                        charIndex++;
+                    }
+                    div.innerHTML = renderedContent + `<div class="msg-timestamp">${timeStr}</div>`;
                     setTimeout(typeChar, 10);
                     messages.scrollTop = messages.scrollHeight;
                 } else {
@@ -1056,7 +1076,7 @@
             }
             typeChar();
         } else {
-            div.innerHTML = `${text}<div class="msg-timestamp">${timeStr}</div>`;
+            div.innerHTML = `${formattedText}<div class="msg-timestamp">${timeStr}</div>`;
             messages.appendChild(div);
             saveConversation(); // שמירה מיידית
         }
@@ -1269,9 +1289,14 @@
             // Log response for debugging
             console.log('Add to cart response:', data);
 
-            // Check if WooCommerce returned an error (WooCommerce uses 'error' property for errors)
-            // Success is indicated by presence of 'fragments' or no 'error' property
-            if (data.error && data.error !== false) {
+            // WooCommerce success indicators: either has 'fragments' property, or error is explicitly false, or no error property at all
+            const hasFragments = data.fragments && typeof data.fragments === 'object';
+            const hasExplicitSuccess = data.error === false || data.error === '';
+            const hasNoError = !data.error;
+            const isSuccess = hasFragments || hasExplicitSuccess || hasNoError;
+
+            if (!isSuccess && data.error) {
+                // Only show error if we're certain it's an error
                 console.error('WooCommerce error:', data.error);
                 buttonElement.innerHTML = 'שגיאה ❌';
                 setTimeout(() => {
@@ -1279,7 +1304,7 @@
                     buttonElement.disabled = false;
                 }, 2000);
             } else {
-                // Success! (either has fragments or no error)
+                // Success! Product was added
                 buttonElement.innerHTML = 'נוסף! ✓';
                 setTimeout(() => {
                     buttonElement.innerHTML = originalText;
