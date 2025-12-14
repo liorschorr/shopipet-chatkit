@@ -152,7 +152,10 @@ async def chat_stream(request: ChatRequest):
                 headers={
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no"  # Disable nginx buffering
+                    "X-Accel-Buffering": "no",  # Disable nginx buffering
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "POST, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type"
                 }
             )
         else:
@@ -162,7 +165,10 @@ async def chat_stream(request: ChatRequest):
                 headers={
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no"
+                    "X-Accel-Buffering": "no",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "POST, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type"
                 }
             )
 
@@ -171,3 +177,17 @@ async def chat_stream(request: ChatRequest):
     except Exception as e:
         logger.error(f"Chat stream error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.options("/chat/stream")
+async def chat_stream_options():
+    """Handle CORS preflight for streaming endpoint"""
+    return JSONResponse(
+        content={"status": "ok"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Max-Age": "3600"
+        }
+    )

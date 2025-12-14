@@ -2,7 +2,7 @@
 Chat Router - FastAPI Implementation
 Handles chat requests with OpenAI Assistant API integration
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import JSONResponse
 import os
 import json
@@ -259,3 +259,17 @@ async def chat(request: ChatRequest):
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.options("/chat")
+async def chat_options():
+    """Handle CORS preflight for chat endpoint"""
+    return JSONResponse(
+        content={"status": "ok"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Max-Age": "3600"
+        }
+    )
