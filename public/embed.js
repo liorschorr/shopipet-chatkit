@@ -1365,7 +1365,139 @@
         }
     }
 
-    async function sendMessage() {
+    // Configuration: Set to true to use streaming, false for polling
+    const USE_STREAMING = true;
+
+    async function sendMessageStreaming() {
+        const text = input.value.trim();
+        if (!text) return;
+        addMessage(text, 'user');
+        input.value = '';
+        input.disabled = true;
+
+        // הצגת נקודות מהבהבות בזמן המתנה לשרת
+        showWaitingDots();
+
+        try {
+            const response = await fetch(`${API_BASE}/chat/stream`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    message: text,
+                    thread_id: localStorage.getItem(STORAGE_KEY)
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            // Remove waiting dots once stream starts
+            hideTyping();
+
+            // Process the stream
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let currentMessageDiv = null;
+            let accumulatedText = '';
+
+            while (true) {
+                const {done, value} = await reader.read();
+
+                if (done) {
+                    break;
+                }
+
+                // Decode the chunk
+                buffer += decoder.decode(value, {stream: true});
+
+                // Process complete lines (SSE format: "data: {...}\n\n")
+                const lines = buffer.split('\n\n');
+                buffer = lines.pop(); // Keep incomplete line in buffer
+
+                for (const line of lines) {
+                    if (!line.trim() || !line.startsWith('data: ')) continue;
+
+                    const jsonStr = line.substring(6); // Remove "data: " prefix
+                    try {
+                        const event = JSON.parse(jsonStr);
+
+                        if (event.type === 'thread_id') {
+                            // Store thread ID
+                            localStorage.setItem(STORAGE_KEY, event.thread_id);
+
+                        } else if (event.type === 'text') {
+                            // Show typing indicator in header if not already shown
+                            if (!currentMessageDiv) {
+                                showTypingStatus();
+
+                                // Create message div for streaming text
+                                const timestamp = Date.now();
+                                const jerusalemTime = getJerusalemTime();
+
+                                // Add date divider if needed
+                                if (shouldShowDateDivider(timestamp)) {
+                                    const dateDivider = document.createElement('div');
+                                    dateDivider.className = 'date-divider';
+                                    dateDivider.innerHTML = `<span class="date-divider-text">${getDateLabel(jerusalemTime)}</span>`;
+                                    messages.appendChild(dateDivider);
+                                }
+
+                                currentMessageDiv = document.createElement('div');
+                                currentMessageDiv.className = 'msg bot';
+                                currentMessageDiv.setAttribute('data-timestamp', timestamp);
+                                messages.appendChild(currentMessageDiv);
+                            }
+
+                            // Append text delta
+                            accumulatedText += event.content;
+                            const timeStr = formatTime(getJerusalemTime());
+                            currentMessageDiv.innerHTML = accumulatedText + `<div class="msg-timestamp">${timeStr}</div>`;
+                            scrollToBottom();
+
+                        } else if (event.type === 'products') {
+                            // Hide typing and render products
+                            hideTyping();
+                            if (accumulatedText) {
+                                saveConversation();
+                            }
+                            setTimeout(() => renderProducts(event.data), 300);
+
+                        } else if (event.type === 'done') {
+                            // Stream complete
+                            hideTyping();
+                            localStorage.setItem(STORAGE_KEY, event.thread_id);
+                            saveConversation();
+
+                        } else if (event.type === 'error') {
+                            // Error occurred
+                            hideTyping();
+                            addMessage("שגיאה: " + event.message, 'error');
+                        }
+
+                    } catch (parseError) {
+                        console.error('Failed to parse SSE event:', parseError, jsonStr);
+                    }
+                }
+            }
+
+            // Final cleanup
+            if (accumulatedText && currentMessageDiv) {
+                saveConversation();
+            }
+
+        } catch (e) {
+            console.error('Streaming error:', e);
+            hideTyping();
+            addMessage("שגיאת תקשורת.", 'error');
+        }
+
+        input.disabled = false;
+        input.focus();
+    }
+
+    async function sendMessagePolling() {
         const text = input.value.trim();
         if (!text) return;
         addMessage(text, 'user');
@@ -1404,6 +1536,15 @@
             addMessage("שגיאת תקשורת.", 'error');
         }
         input.disabled = false; input.focus();
+    }
+
+    // Main sendMessage function - uses streaming or polling based on config
+    async function sendMessage() {
+        if (USE_STREAMING) {
+            return sendMessageStreaming();
+        } else {
+            return sendMessagePolling();
+        }
     }
 
     send.onclick = sendMessage;
