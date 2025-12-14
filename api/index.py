@@ -80,6 +80,20 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# Global OPTIONS handler for all routes
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    """Handle all OPTIONS requests globally"""
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400"
+        }
+    )
+
 # Health check endpoint
 @app.get("/")
 async def root():

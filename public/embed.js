@@ -1366,7 +1366,7 @@
     }
 
     // Configuration: Set to true to use streaming, false for polling
-    const USE_STREAMING = true;
+    const USE_STREAMING = false;  // Temporarily disabled while fixing CORS
 
     async function sendMessageStreaming() {
         const text = input.value.trim();
