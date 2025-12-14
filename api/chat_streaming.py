@@ -3,7 +3,7 @@ Streaming Chat Router - FastAPI Implementation with OpenAI Streaming
 This replaces the polling mechanism with real-time streaming responses
 """
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 import os
 import json
 import re
