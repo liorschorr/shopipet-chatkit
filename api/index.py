@@ -148,4 +148,6 @@ except ImportError as e:
 
 
 # For Vercel serverless deployment
-handler = app
+# Use Mangum to wrap FastAPI for AWS Lambda/Vercel compatibility
+from mangum import Mangum
+handler = Mangum(app, lifespan="off")

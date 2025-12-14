@@ -5,6 +5,12 @@
       "schedule": "0 2 * * *"
     }
   ],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
